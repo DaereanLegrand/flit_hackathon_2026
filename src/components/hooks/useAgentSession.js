@@ -13,8 +13,11 @@ function getDeviceId() {
 async function invokeAgent(body) {
   const { data, error } = await supabase.functions.invoke('daily-dj-agent', { body })
   if (error) {
-    const contextBody = await error.context?.json?.().catch(() => null)
-    throw new Error(data?.error || contextBody?.error || error.message || 'No se pudo contactar al agente')
+    let ctx = null
+    try { ctx = await error.context?.json() } catch {}
+    const errMsg = data?.error || ctx?.error || error.message || 'No se pudo contactar al agente'
+    const debug = ctx?._debug
+    throw new Error(debug ? errMsg + '\n\n' + debug.join('\n') : errMsg)
   }
   if (data?.error) throw new Error(data.error)
   return data

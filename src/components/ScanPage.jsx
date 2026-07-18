@@ -1,8 +1,8 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 
-function generateId() {
+function getDeviceId() {
   let id = localStorage.getItem('device_id')
   if (!id) {
     id = crypto.randomUUID()
@@ -17,25 +17,34 @@ export default function ScanPage() {
   const [joined, setJoined] = useState(false)
   const [participants, setParticipants] = useState([])
   const [error, setError] = useState('')
-  const deviceId = useRef(generateId())
+  const deviceId = useRef(getDeviceId())
   const intervalRef = useRef(null)
+
+  const savedNickname = localStorage.getItem(`room_${hash}`)
+
+  const fetchRoom = useCallback(async () => {
+    try {
+      const { data } = await supabase.functions.invoke('get-room', {
+        method: 'POST',
+        body: { qr_hash: hash },
+      })
+      if (data?.participants) setParticipants(data.participants)
+    } catch {}
+  }, [hash])
+
+  useEffect(() => {
+    if (savedNickname) {
+      setJoined(true)
+    }
+  }, [savedNickname])
 
   useEffect(() => {
     if (joined) {
-      const fetchRoom = async () => {
-        try {
-          const { data } = await supabase.functions.invoke('get-room', {
-            method: 'POST',
-            body: { qr_hash: hash },
-          })
-          if (data?.participants) setParticipants(data.participants)
-        } catch {}
-      }
       fetchRoom()
       intervalRef.current = setInterval(fetchRoom, 2000)
       return () => clearInterval(intervalRef.current)
     }
-  }, [joined, hash])
+  }, [joined, fetchRoom])
 
   async function handleJoin(e) {
     e.preventDefault()
@@ -47,6 +56,7 @@ export default function ScanPage() {
         body: { qr_hash: hash, device_id: deviceId.current, nickname: nickname.trim() },
       })
       if (err) throw err
+      localStorage.setItem(`room_${hash}`, nickname.trim())
       setJoined(true)
     } catch (err) {
       setError(err.message || 'Error al unirse')
@@ -57,7 +67,7 @@ export default function ScanPage() {
     return (
       <div className="disco-home">
         <div className="joined-badge">✓</div>
-        <p className="joined-nick">{nickname}</p>
+        <p className="joined-nick">{savedNickname || nickname}</p>
         <p className="room-count">{participants.length} en la sala</p>
         <div className="room-list">
           {participants.map((p) => (

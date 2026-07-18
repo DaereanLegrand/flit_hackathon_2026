@@ -400,7 +400,7 @@ async function handleAnswer(db: any, body: JsonObject): Promise<JsonObject> {
   const answer = requiredText(body.answer, "answer", 1, 600)
   const answers = Array.isArray(session.answers) ? [...session.answers] : []
   const pendingIndex = answers.findIndex((item) => !item.answer)
-  if (pendingIndex < 0) { console.error("[handleAnswer] no pending question, running agent directly"); return runAgent(db, session) }
+  if (pendingIndex < 0) { console.error("[handleAnswer] no pending question, running agent directly"); return runAgent(db, session, true) }
   answers[pendingIndex] = { ...answers[pendingIndex], answer }
   console.error("[handleAnswer] saving answer at index:", pendingIndex, "answer:", answer)
   console.error("[handleAnswer] full answers after save:", JSON.stringify(answers))
@@ -412,7 +412,7 @@ async function handleAnswer(db: any, body: JsonObject): Promise<JsonObject> {
     .single()
   if (error) { console.error("[handleAnswer] update error:", error); throw error }
   console.error("[handleAnswer] answer saved, running agent")
-  return runAgent(db, data)
+  return runAgent(db, data, true)
 }
 
 async function handleStatus(db: any, body: JsonObject): Promise<JsonObject> {
@@ -421,9 +421,9 @@ async function handleStatus(db: any, body: JsonObject): Promise<JsonObject> {
   console.error("[handleStatus] session:", session.id, "status:", session.status, "answers:", JSON.stringify(session.answers))
   if (session.status === "completed") return recommendationPayload(db, session.id)
   const hasPendingQuestion = (session.answers ?? []).some((item) => !item.answer)
-  if (hasPendingQuestion) { console.error("[handleStatus] returning pending question"); return questionPayload(session) }
+  if (hasPendingQuestion) { console.error("[handleStatus] returning pending question"); return questionPayload(session, true) }
   console.error("[handleStatus] running agent")
-  return runAgent(db, session)
+  return runAgent(db, session, true)
 }
 
 async function handleFeedback(db: any, body: JsonObject): Promise<JsonObject> {

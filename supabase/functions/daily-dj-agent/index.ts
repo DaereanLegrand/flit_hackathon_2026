@@ -10,11 +10,8 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 }
 
-let _logs: string[] = []
-
-function log(msg: string) {
-  _logs.push(msg)
-  log(msg)
+function log(...args: unknown[]) {
+  console.error(...args)
 }
 
 type JsonObject = Record<string, any>
@@ -35,11 +32,7 @@ interface QuestionAnswer {
 }
 
 function json(body: unknown, status = 200): Response {
-  const res = {
-    ...(typeof body === "object" && body !== null ? body as any : { message: String(body) }),
-    _debug: _logs.slice(),
-  }
-  return Response.json(res, { status, headers: CORS_HEADERS })
+  return Response.json(body, { status, headers: CORS_HEADERS })
 }
 
 function messageOf(error: unknown): string {

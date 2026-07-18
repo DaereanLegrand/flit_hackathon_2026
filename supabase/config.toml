@@ -382,8 +382,10 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
-# [edge_runtime.secrets]
-# secret_key = "env(SECRET_VALUE)"
+[edge_runtime.secrets]
+GROQ_API_KEY = "env(GROQ_API_KEY)"
+LASTFM_API_KEY = "env(LASTFM_API_KEY)"
+GROQ_MODEL = "env(GROQ_MODEL)"
 
 [analytics]
 enabled = true
@@ -478,3 +480,9 @@ entrypoint = "./functions/get-location/index.ts"
 # Specifies static files to be bundled with the function. Supports glob patterns.
 # For example, if you want to serve static HTML pages in your function:
 # static_files = [ "./functions/get-location/*.html" ]
+
+[functions.daily-dj-agent]
+enabled = true
+verify_jwt = false
+import_map = "./functions/daily-dj-agent/deno.json"
+entrypoint = "./functions/daily-dj-agent/index.ts"

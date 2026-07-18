@@ -7,19 +7,28 @@
 }
 
 :root {
-  --primary: #475b63;
-  --accent: #f2d88a;
-  --bg: #faf6ee;
-  --surface: #ffffff;
-  --border: #e5ddd2;
-  --text: #2c2c2c;
-  --text-secondary: #7a7066;
+  --black: #0a0a0a;
+  --black2: #121212;
+  --surface: #1a1a1a;
+  --surface2: #222;
+  --border: #2a2a2a;
+
+  --pink: #ff2d78;
+  --cyan: #00f0ff;
+  --purple: #b388ff;
+  --gold: #ffd54f;
+
+  --text: #f0f0f0;
+  --text-secondary: #888;
+
+  --accent: var(--pink);
+  --primary: var(--cyan);
 
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   font-size: 14px;
   line-height: 1.5;
   color: var(--text);
-  background: var(--bg);
+  background: var(--black);
   -webkit-font-smoothing: antialiased;
 }
 
@@ -46,8 +55,8 @@ input:focus, select:focus {
 }
 
 ::selection {
-  background: var(--accent);
-  color: var(--primary);
+  background: var(--pink);
+  color: #000;
 }
 
 .btn {

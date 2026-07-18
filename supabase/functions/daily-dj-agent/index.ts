@@ -224,23 +224,8 @@ async function handleRecommendation(db: any, session: SessionRow, includeToken: 
   const allText = answered.map(a => `${a.question} ${a.answer}`).join(" ")
   log("[handleRecommendation] START full conversation:", allText)
 
-  // LLM generates search tags based on conversation
-  const tagPrompt = generateTagPrompt(allText)
-  log("[handleRecommendation] calling LLM for tag generation")
-  let tags: string[] = []
-  try {
-    const llmTags = await callLLM([
-      { role: "user", content: "Eres un asistente que genera tags musicales basados en estados de ánimo." },
-      { role: "user", content: tagPrompt },
-    ])
-    tags = llmTags.split(",").map(t => t.trim().toLowerCase()).filter(t => t.length > 0 && t.length <= 60)
-    if (tags.length === 0) tags = ["música variada"]
-    log("[handleRecommendation] LLM generated tags:", tags)
-  } catch (e) {
-    log("[handleRecommendation] LLM tag generation failed:", String(e))
-    tags = ["pop", "rock", "latin", "música alegre", "música para sentirse bien"]
-    log("[handleRecommendation] using fallback tags:", tags)
-  }
+  const tags = guessTags(allText)
+  log("[handleRecommendation] guessed tags:", tags)
 
   log("[handleRecommendation] searching Last.fm with tags:", tags)
   const candidates = await searchLastFmCandidates("daf019cb0f3fbf8cc66db66d034e11ee", { desired_tags: tags, seed_artist: null, seed_track: null }).catch((e) => {

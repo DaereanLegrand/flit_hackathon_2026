@@ -17,6 +17,7 @@ function getDeviceId() {
 
 export default function HostPage() {
   const [qrDataUrl, setQrDataUrl] = useState(null)
+  const [qrUrl, setQrUrl] = useState(null)
   const [hash, setHash] = useState(null)
   const [loading, setLoading] = useState(false)
   const [participants, setParticipants] = useState([])
@@ -58,6 +59,7 @@ export default function HostPage() {
       const url = `${window.location.origin}/qr/${data.hash}`
       const dataUrl = await QRCode.toDataURL(url, { width: 256, margin: 2, color: { light: '#ffffff' } })
       setQrDataUrl(dataUrl)
+      setQrUrl(url)
       setHash(data.hash)
     } catch (err) {
       console.error(err)
@@ -75,7 +77,9 @@ export default function HostPage() {
       {qrDataUrl && (
         <>
           <div className="qr-wrapper">
-            <img src={qrDataUrl} alt="QR" className="qr-image" />
+            <a href={qrUrl} target="_blank" rel="noopener noreferrer">
+              <img src={qrDataUrl} alt="QR" className="qr-image" />
+            </a>
           </div>
           <div className="room-section">
             <p className="room-count">{participants.length} en la sala</p>

@@ -227,7 +227,7 @@ async function handleRecommendation(db: any, session: SessionRow, includeToken: 
   let tags: string[] = []
   try {
     const llmTags = await callLLM([
-      { role: "system", content: "Eres un asistente que genera tags musicales basados en estados de ánimo." },
+      { role: "user", content: "Eres un asistente que genera tags musicales basados en estados de ánimo." },
       { role: "user", content: tagPrompt },
     ])
     tags = llmTags.split(",").map(t => t.trim().toLowerCase()).filter(t => t.length > 0 && t.length <= 60)
@@ -279,16 +279,27 @@ async function handleRecommendation(db: any, session: SessionRow, includeToken: 
   })
 
   console.error("[handleRecommendation] calling LLM for recommendation")
-  const llmText = await callLLM(messages)
-  console.error("[handleRecommendation] LLM recommendation:", llmText.slice(0, 200))
-
-  if (!llmText) llmText = `Te recomiendo "${savedCandidates[0].track_name}" de ${savedCandidates[0].artist_name}.`
+  let llmText = ""
+  try {
+    llmText = await callLLM(messages)
+    console.error("[handleRecommendation] LLM recommendation OK, length:", llmText.length)
+  } catch (e) {
+    console.error("[handleRecommendation] LLM recommendation call failed:", String(e))
+    llmText = ""
+  }
+  if (!llmText) {
+    llmText = `Te recomiendo "${savedCandidates[0].track_name}" de ${savedCandidates[0].artist_name}.`
+    console.error("[handleRecommendation] using fallback reason:", llmText)
+  }
 
   const primary = savedCandidates[0]
   const playlist = savedCandidates.slice(0, 4)
 
-  console.error("[handleRecommendation] inserting recommendation, primary_candidate_id:", primary.id)
+  console.error("[handleRecommendation] inserting recommendation, primary id:", primary?.id, "primary track:", primary?.track_name)
   const vibe = tags.join(", ").slice(0, 120) || "música variada"
+  console.error("[handleRecommendation] vibe:", vibe)
+  console.error("[handleRecommendation] reason:", llmText.slice(0, 200))
+  console.error("[handleRecommendation] playlist tracks:", playlist.map(c => c.track_name))
   const { error: recError } = await db.from("daily_music_recommendations").insert({
     session_id: session.id,
     primary_candidate_id: primary.id,
@@ -324,7 +335,7 @@ async function createSession(db: any, deviceId: string, initialAnswers: Question
   console.error("[createSession] device:", deviceId, "initialAnswers:", JSON.stringify(initialAnswers))
   const today = new Date().toISOString().slice(0, 10)
   console.error("[createSession] deleting any existing session for device:", deviceId, "on:", today)
-  await db.from("daily_music_sessions").delete().eq("device_id", deviceId).gte("created_at", today).then(() => {}, () => {})
+  await db.from("daily_music_sessions").delete().eq("device_id", deviceId).gte("created_at", today)
   console.error("[createSession] inserting fresh session")
   const { data, error } = await db
     .from("daily_music_sessions")

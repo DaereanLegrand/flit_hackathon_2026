@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import MiniMap from './MiniMap'
 import useRoomSongs from './hooks/useRoomSongs'
+import MoodSlider from './MoodSlider'
+import QuestionPlaceholder from './QuestionPlaceholder'
 
 function getDeviceId() {
   let id = localStorage.getItem('device_id')
@@ -17,6 +19,8 @@ export default function ScanPage() {
   const { hash } = useParams()
   const [nickname, setNickname] = useState('')
   const [phase, setPhase] = useState('form')
+  const [quizStep, setQuizStep] = useState(1)
+  const [_moodValue, setMoodValue] = useState(null)
   const [showSearch, setShowSearch] = useState(false)
   const [participants, setParticipants] = useState([])
   const [error, setError] = useState('')
@@ -46,7 +50,7 @@ export default function ScanPage() {
   useEffect(() => {
     if (savedNickname) {
       setNickname(savedNickname)
-      setPhase('room')
+      setPhase('quiz')
     }
   }, [savedNickname])
 
@@ -71,7 +75,7 @@ export default function ScanPage() {
 
   useEffect(() => {
     if (phase === 'joining') {
-      const timer = setTimeout(() => setPhase('room'), 1500)
+      const timer = setTimeout(() => setPhase('quiz'), 1500)
       return () => clearTimeout(timer)
     }
   }, [phase])
@@ -147,6 +151,22 @@ export default function ScanPage() {
         <div className="joined-badge">✓</div>
       </div>
     )
+  }
+
+  if (phase === 'quiz') {
+    if (quizStep === 1) {
+      return (
+        <MoodSlider onComplete={(val) => {
+          setMoodValue(val)
+          setQuizStep(2)
+        }} />
+      )
+    }
+    if (quizStep === 2) {
+      return (
+        <QuestionPlaceholder onComplete={() => setPhase('room')} />
+      )
+    }
   }
 
   if (phase === 'room') {

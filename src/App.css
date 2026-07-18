@@ -257,11 +257,10 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
-  cursor: pointer;
   transition: border-color 0.2s;
 }
 
-.search-result:hover {
+.search-result:has(.vote-btn:hover) {
   border-color: var(--pink);
 }
 
@@ -314,6 +313,100 @@
   flex-shrink: 0;
 }
 
+.vote-btn--compact {
+  min-width: 44px;
+  padding: 6px 8px;
+}
+
+.vote-btn--compact .vote-btn-icon {
+  font-size: 14px;
+}
+
+.vote-btn--compact .vote-btn-count {
+  font-size: 12px;
+}
+
+.search-top-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+
+.search-top-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  text-align: center;
+  margin-bottom: 4px;
+}
+
+.search-top-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  animation: fadeIn 0.3s ease;
+}
+
+.search-top-rank {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pink);
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.search-top-cover {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.search-top-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.search-top-song {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-top-artist {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-top-votes {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--pink);
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
 @keyframes soft-glow {
   0% {
     box-shadow: 0 0 30px rgba(255, 45, 120, 0.5), 0 0 60px rgba(255, 45, 120, 0.25), 0 0 90px rgba(255, 45, 120, 0.1);
@@ -360,4 +453,156 @@
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(12px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+.songs-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 40px 20px 60px;
+  background: var(--black);
+}
+
+.songs-page-title {
+  font-family: 'Playfair Display', serif;
+  font-size: 48px;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--pink);
+  text-shadow: 0 0 30px var(--pink);
+}
+
+.songs-page-sub {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 4px;
+}
+
+.songs-page-status,
+.songs-page-error {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.songs-page-error {
+  color: var(--pink);
+}
+
+.song-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 520px;
+}
+
+.song-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  transition: border-color 0.2s, transform 0.2s;
+  animation: fadeIn 0.3s ease;
+}
+
+.song-card--voted {
+  border-color: rgba(255, 45, 120, 0.35);
+}
+
+.song-rank {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.song-card-img {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.song-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.song-card-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.song-card-artist {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vote-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 52px;
+  padding: 8px 10px;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s, transform 0.15s;
+  flex-shrink: 0;
+}
+
+.vote-btn:hover:not(:disabled) {
+  border-color: var(--pink);
+  background: rgba(255, 45, 120, 0.08);
+}
+
+.vote-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.vote-btn:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.vote-btn-icon {
+  font-size: 12px;
+  color: var(--pink);
+  line-height: 1;
+}
+
+.vote-btn-count {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }

@@ -1,6 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
+import {
+  voteSong,
+  songKey,
+  getVotesMap,
+  buildRankedList,
+  VOTES_CHANGED_EVENT,
+} from './services/songVotes'
 
 function getDeviceId() {
   let id = localStorage.getItem('device_id')
@@ -21,6 +28,8 @@ export default function ScanPage() {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
+  const [votesMap, setVotesMap] = useState({})
+  const [topSongs, setTopSongs] = useState([])
   const deviceId = useRef(getDeviceId())
   const intervalRef = useRef(null)
   const searchTimer = useRef(null)
@@ -58,6 +67,34 @@ export default function ScanPage() {
       return () => clearTimeout(timer)
     }
   }, [phase])
+
+  const refreshVotes = useCallback(() => {
+    setVotesMap(getVotesMap())
+    setTopSongs(buildRankedList([]).filter((s) => s.vote_count > 0))
+  }, [])
+
+  useEffect(() => {
+    refreshVotes()
+    window.addEventListener(VOTES_CHANGED_EVENT, refreshVotes)
+    window.addEventListener('storage', refreshVotes)
+    return () => {
+      window.removeEventListener(VOTES_CHANGED_EVENT, refreshVotes)
+      window.removeEventListener('storage', refreshVotes)
+    }
+  }, [refreshVotes])
+
+  function handleVoteResult(result) {
+    voteSong({
+      title: result.title,
+      artist: result.artist,
+      coverUrl: result.cover?.small || result.cover?.large || null,
+    })
+    refreshVotes()
+  }
+
+  function getVoteCount(title, artist) {
+    return votesMap[songKey(title, artist)]?.votes || 0
+  }
 
   function handleSearchChange(value) {
     setQuery(value)
@@ -158,9 +195,39 @@ export default function ScanPage() {
                   {r.length > 0 && (
                     <span className="result-duration">{formatTime(r.length / 1000)}</span>
                   )}
+                  <button
+                    type="button"
+                    className="vote-btn vote-btn--compact"
+                    onClick={() => handleVoteResult(r)}
+                    aria-label={`Votar por ${r.title}`}
+                  >
+                    <span className="vote-btn-icon">♥</span>
+                    <span className="vote-btn-count">{getVoteCount(r.title, r.artist)}</span>
+                  </button>
                 </div>
               ))}
             </div>
+
+            {topSongs.length > 0 && (
+              <div className="search-top-list">
+                <p className="search-top-title">Top votadas</p>
+                {topSongs.map((song, i) => (
+                  <div key={song.id} className="search-top-item">
+                    <span className="search-top-rank">{i + 1}</span>
+                    <img
+                      src={song.coverUrl}
+                      alt=""
+                      className="search-top-cover"
+                    />
+                    <div className="search-top-info">
+                      <span className="search-top-song">{song.title}</span>
+                      <span className="search-top-artist">{song.artist}</span>
+                    </div>
+                    <span className="search-top-votes">{song.vote_count} ♥</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>

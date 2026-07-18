@@ -10,6 +10,13 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 }
 
+let _logs: string[] = []
+
+function log(msg: string) {
+  _logs.push(msg)
+  log(msg)
+}
+
 type JsonObject = Record<string, any>
 
 interface SessionRow {
@@ -28,7 +35,11 @@ interface QuestionAnswer {
 }
 
 function json(body: unknown, status = 200): Response {
-  return Response.json(body, { status, headers: CORS_HEADERS })
+  const res = {
+    ...(typeof body === "object" && body !== null ? body as any : { message: String(body) }),
+    _debug: _logs.slice(),
+  }
+  return Response.json(res, { status, headers: CORS_HEADERS })
 }
 
 function messageOf(error: unknown): string {
@@ -135,8 +146,8 @@ async function getSession(
 }
 
 async function callLLM(messages: unknown[]): Promise<string> {
-  console.error("[callLLM] URL:", LLM_URL, "messages count:", messages.length)
-  console.error("[callLLM] messages:", JSON.stringify(messages).slice(0, 500))
+  log("[callLLM] URL:", LLM_URL, "messages count:", messages.length)
+  log("[callLLM] messages:", JSON.stringify(messages).slice(0, 500))
   const headers: Record<string, string> = { "Content-Type": "application/json" }
   let res: Response
   try {
@@ -145,28 +156,28 @@ async function callLLM(messages: unknown[]): Promise<string> {
       body: JSON.stringify({ messages, temperature: 0.35, max_tokens: 900, stream: false }),
       signal: AbortSignal.timeout(30000),
     })
-    console.error("[callLLM] response status:", res.status, res.statusText)
+    log("[callLLM] response status:", res.status, res.statusText)
   } catch (e) {
-    console.error("[callLLM] fetch failed:", String(e))
+    log("[callLLM] fetch failed:", String(e))
     throw new Error(`LLM fetch failed: ${String(e).slice(0, 300)}`)
   }
   let body: any
   try {
     body = await res.json()
-    console.error("[callLLM] response body:", JSON.stringify(body).slice(0, 300))
+    log("[callLLM] response body:", JSON.stringify(body).slice(0, 300))
   } catch (e) {
-    console.error("[callLLM] JSON parse failed:", String(e))
+    log("[callLLM] JSON parse failed:", String(e))
     const text = await res.text().catch(() => "")
-    console.error("[callLLM] raw response:", text.slice(0, 300))
+    log("[callLLM] raw response:", text.slice(0, 300))
     throw new Error(`LLM response not JSON: ${text.slice(0, 200)}`)
   }
   if (!res.ok || body?.error) {
     const detail = body?.error?.message || body?.message || `HTTP ${res.status}`
-    console.error("[callLLM] error response:", detail)
+    log("[callLLM] error response:", detail)
     throw new Error(`LLM error: ${String(detail).slice(0, 300)}`)
   }
   const content = body.choices?.[0]?.message?.content ?? ""
-  console.error("[callLLM] content:", content.slice(0, 200))
+  log("[callLLM] content:", content.slice(0, 200))
   return content
 }
 
@@ -174,22 +185,21 @@ function buildUserContextBlock(_deviceId: string): string {
   return ""
 }
 
-function generateTagPrompt(conversation: string): string {
-  return `Basado en esta conversación sobre el estado de ánimo del usuario:
-
-"${conversation}"
-
-Genera una lista de 3 a 6 tags de música que reflejen las emociones y el estado de ánimo descritos.
-Los tags deben ser en español, incluyendo géneros musicales, estados de ánimo, estilos y vibes.
-Ejemplos: "música alegre", "rock energético", "chill melancholy", "latin pop", "música para relajarse", "electrónica", "baladas románticas", "indie folk", "música motivacional", "ritmos bailables", "música instrumental", "punk", "reggaetón", "salsa", "música clásica", "jazz", "hip hop", "R&B", "música acústica", "k-pop", "música africana", "rock clásico", "metal", "blues", "country", "música experimental", "lo-fi", "música para dormir", "música para concentrarse", "música para hacer ejercicio"
-
-SOLO responde con los tags separados por comas. Sin explicaciones ni intro.`
+function guessTags(text: string): string[] {
+  const t = text.toLowerCase()
+  if (t.includes("tranquil") || t.includes("relaj") || t.includes("calm")) return ["ambient", "chill"]
+  if (t.includes("energ") || t.includes("fiesta") || t.includes("dance")) return ["dance", "electronic", "pop"]
+  if (t.includes("trist") || t.includes("melan") || t.includes("sad")) return ["indie", "melancholic"]
+  if (t.includes("alegr") || t.includes("feliz") || t.includes("happy")) return ["pop", "latin"]
+  if (t.includes("rock") || t.includes("banda")) return ["rock", "alternative"]
+  if (t.includes("clásic") || t.includes("classic") || t.includes("piano")) return ["classical"]
+  return ["pop", "rock", "latin"]
 }
 
 async function askNextQuestion(db: any, session: SessionRow, includeToken: boolean): Promise<JsonObject> {
   const answered = session.answers.filter(a => a.answer)
-  console.error("[askNextQuestion] START answered count:", answered.length, "session:", session.id)
-  console.error("[askNextQuestion] answered details:", JSON.stringify(answered))
+  log("[askNextQuestion] START answered count:", answered.length, "session:", session.id)
+  log("[askNextQuestion] answered details:", JSON.stringify(answered))
 
   const contextBlock = buildUserContextBlock(session.device_id)
   const messages: JsonObject[] = [
@@ -202,28 +212,28 @@ async function askNextQuestion(db: any, session: SessionRow, includeToken: boole
   }
   messages.push({ role: "user", content: "Haz una pregunta corta. Máximo 2 oraciones." })
 
-  console.error("[askNextQuestion] calling LLM with", messages.length, "messages")
+  log("[askNextQuestion] calling LLM with", messages.length, "messages")
   const llmText = await callLLM(messages)
-  console.error("[askNextQuestion] LLM returned question:", llmText)
+  log("[askNextQuestion] LLM returned question:", llmText)
 
   const key = ["mood", "energy", "intention", "discovery"][answered.length] || "discovery"
   const newAnswers = [...session.answers, { key, question: llmText, options: [], answer: null }]
-  console.error("[askNextQuestion] saving newAnswers:", JSON.stringify(newAnswers))
+  log("[askNextQuestion] saving newAnswers:", JSON.stringify(newAnswers))
   const { error } = await db.from("daily_music_sessions").update({ answers: newAnswers }).eq("id", session.id)
-  if (error) { console.error("[askNextQuestion] DB update error:", error); throw error }
+  if (error) { log("[askNextQuestion] DB update error:", error); throw error }
 
-  console.error("[askNextQuestion] END returning question payload")
+  log("[askNextQuestion] END returning question payload")
   return questionPayload({ ...session, answers: newAnswers }, includeToken)
 }
 
 async function handleRecommendation(db: any, session: SessionRow, includeToken: boolean): Promise<JsonObject> {
   const answered = session.answers.filter(a => a.answer)
   const allText = answered.map(a => `${a.question} ${a.answer}`).join(" ")
-  console.error("[handleRecommendation] START full conversation:", allText)
+  log("[handleRecommendation] START full conversation:", allText)
 
   // LLM generates search tags based on conversation
   const tagPrompt = generateTagPrompt(allText)
-  console.error("[handleRecommendation] calling LLM for tag generation")
+  log("[handleRecommendation] calling LLM for tag generation")
   let tags: string[] = []
   try {
     const llmTags = await callLLM([
@@ -232,22 +242,22 @@ async function handleRecommendation(db: any, session: SessionRow, includeToken: 
     ])
     tags = llmTags.split(",").map(t => t.trim().toLowerCase()).filter(t => t.length > 0 && t.length <= 60)
     if (tags.length === 0) tags = ["música variada"]
-    console.error("[handleRecommendation] LLM generated tags:", tags)
+    log("[handleRecommendation] LLM generated tags:", tags)
   } catch (e) {
-    console.error("[handleRecommendation] LLM tag generation failed:", String(e))
+    log("[handleRecommendation] LLM tag generation failed:", String(e))
     tags = ["pop", "rock", "latin", "música alegre", "música para sentirse bien"]
-    console.error("[handleRecommendation] using fallback tags:", tags)
+    log("[handleRecommendation] using fallback tags:", tags)
   }
 
-  console.error("[handleRecommendation] searching Last.fm with tags:", tags)
+  log("[handleRecommendation] searching Last.fm with tags:", tags)
   const candidates = await searchLastFmCandidates("daf019cb0f3fbf8cc66db66d034e11ee", { desired_tags: tags, seed_artist: null, seed_track: null }).catch((e) => {
-    console.error("[handleRecommendation] Last.fm search failed:", String(e))
+    log("[handleRecommendation] Last.fm search failed:", String(e))
     return [] as LastFmCandidate[]
   })
-  console.error("[handleRecommendation] Last.fm returned", candidates.length, "candidates")
+  log("[handleRecommendation] Last.fm returned", candidates.length, "candidates")
 
   const top = candidates.slice(0, 5)
-  console.error("[handleRecommendation] top 5 candidates:", top.map(c => `${c.track_name} - ${c.artist_name}`))
+  log("[handleRecommendation] top 5 candidates:", top.map(c => `${c.track_name} - ${c.artist_name}`))
 
   await db.from("daily_music_candidates").upsert(
     top.map(c => ({ ...c, session_id: session.id })),
@@ -260,9 +270,9 @@ async function handleRecommendation(db: any, session: SessionRow, includeToken: 
     .eq("session_id", session.id)
     .order("score", { ascending: false })
     .limit(5)
-  if (fetchErr) { console.error("[handleRecommendation] fetch candidates error:", fetchErr); throw fetchErr }
-  if (!savedCandidates?.length) { console.error("[handleRecommendation] no saved candidates"); throw new Error("No se pudieron guardar los candidatos") }
-  console.error("[handleRecommendation] saved candidates with IDs:", savedCandidates.map(c => ({ id: c.id, track: c.track_name })))
+  if (fetchErr) { log("[handleRecommendation] fetch candidates error:", fetchErr); throw fetchErr }
+  if (!savedCandidates?.length) { log("[handleRecommendation] no saved candidates"); throw new Error("No se pudieron guardar los candidatos") }
+  log("[handleRecommendation] saved candidates with IDs:", savedCandidates.map(c => ({ id: c.id, track: c.track_name })))
 
   const contextBlock = buildUserContextBlock(session.device_id)
   const messages: JsonObject[] = [
@@ -278,28 +288,28 @@ async function handleRecommendation(db: any, session: SessionRow, includeToken: 
     content: `Aquí hay canciones reales de nuestra biblioteca musical. Elige una y recomiéndala, explicando por qué va con el estado de ánimo del usuario.\n\nCanciones disponibles:\n${savedCandidates.map((c, i) => `${i + 1}. "${c.track_name}" — ${c.artist_name}`).join("\n")}\n\nRecomienda UNA canción. Máximo 3 oraciones.`,
   })
 
-  console.error("[handleRecommendation] calling LLM for recommendation")
+  log("[handleRecommendation] calling LLM for recommendation")
   let llmText = ""
   try {
     llmText = await callLLM(messages)
-    console.error("[handleRecommendation] LLM recommendation OK, length:", llmText.length)
+    log("[handleRecommendation] LLM recommendation OK, length:", llmText.length)
   } catch (e) {
-    console.error("[handleRecommendation] LLM recommendation call failed:", String(e))
+    log("[handleRecommendation] LLM recommendation call failed:", String(e))
     llmText = ""
   }
   if (!llmText) {
     llmText = `Te recomiendo "${savedCandidates[0].track_name}" de ${savedCandidates[0].artist_name}.`
-    console.error("[handleRecommendation] using fallback reason:", llmText)
+    log("[handleRecommendation] using fallback reason:", llmText)
   }
 
   const primary = savedCandidates[0]
   const playlist = savedCandidates.slice(0, 4)
 
-  console.error("[handleRecommendation] inserting recommendation, primary id:", primary?.id, "primary track:", primary?.track_name)
+  log("[handleRecommendation] inserting recommendation, primary id:", primary?.id, "primary track:", primary?.track_name)
   const vibe = tags.join(", ").slice(0, 120) || "música variada"
-  console.error("[handleRecommendation] vibe:", vibe)
-  console.error("[handleRecommendation] reason:", llmText.slice(0, 200))
-  console.error("[handleRecommendation] playlist tracks:", playlist.map(c => c.track_name))
+  log("[handleRecommendation] vibe:", vibe)
+  log("[handleRecommendation] reason:", llmText.slice(0, 200))
+  log("[handleRecommendation] playlist tracks:", playlist.map(c => c.track_name))
   const { error: recError } = await db.from("daily_music_recommendations").insert({
     session_id: session.id,
     primary_candidate_id: primary.id,
@@ -307,69 +317,69 @@ async function handleRecommendation(db: any, session: SessionRow, includeToken: 
     reason: llmText.slice(0, 600),
     playlist: playlist.map(c => publicTrack(c)),
   })
-  if (recError) { console.error("[handleRecommendation] insert error:", recError); throw recError }
+  if (recError) { log("[handleRecommendation] insert error:", recError); throw recError }
 
-  console.error("[handleRecommendation] marking session completed")
+  log("[handleRecommendation] marking session completed")
   await db.from("daily_music_sessions").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", session.id).then(() => {}, () => {})
-  console.error("[handleRecommendation] END returning recommendation payload")
+  log("[handleRecommendation] END returning recommendation payload")
   return recommendationPayload(db, session.id, includeToken ? session.access_token : undefined)
 }
 
 async function runAgent(db: any, session: SessionRow, includeToken = false): Promise<JsonObject> {
-  console.error("[runAgent] START session:", session.id)
-  console.error("[runAgent] all answers:", JSON.stringify(session.answers))
+  log("[runAgent] START session:", session.id)
+  log("[runAgent] all answers:", JSON.stringify(session.answers))
 
   const answeredCount = session.answers.filter(a => a.answer).length
-  console.error("[runAgent] answered count:", answeredCount)
+  log("[runAgent] answered count:", answeredCount)
 
   if (answeredCount >= 3) {
-    console.error("[runAgent] answeredCount >= 3, calling handleRecommendation")
+    log("[runAgent] answeredCount >= 3, calling handleRecommendation")
     return handleRecommendation(db, session, includeToken)
   } else {
-    console.error("[runAgent] answeredCount < 3, calling askNextQuestion")
+    log("[runAgent] answeredCount < 3, calling askNextQuestion")
     return askNextQuestion(db, session, includeToken)
   }
 }
 
 async function createSession(db: any, deviceId: string, initialAnswers: QuestionAnswer[]): Promise<SessionRow> {
-  console.error("[createSession] device:", deviceId, "initialAnswers:", JSON.stringify(initialAnswers))
+  log("[createSession] device:", deviceId, "initialAnswers:", JSON.stringify(initialAnswers))
   const today = new Date().toISOString().slice(0, 10)
-  console.error("[createSession] deleting any existing session for device:", deviceId, "on:", today)
+  log("[createSession] deleting any existing session for device:", deviceId, "on:", today)
   await db.from("daily_music_sessions").delete().eq("device_id", deviceId).gte("created_at", today)
-  console.error("[createSession] inserting fresh session")
+  log("[createSession] inserting fresh session")
   const { data, error } = await db
     .from("daily_music_sessions")
     .insert({ device_id: deviceId, answers: initialAnswers })
     .select("id, access_token, device_id, status, answers")
     .single()
   if (error) {
-    console.error("[createSession] insert error:", error)
+    log("[createSession] insert error:", error)
     throw error
   }
-  console.error("[createSession] created fresh session:", data.id)
+  log("[createSession] created fresh session:", data.id)
   return data as SessionRow
 }
 
 async function resumeOrRun(db: any, session: SessionRow): Promise<JsonObject> {
-  console.error("[resumeOrRun] session:", session.id, "status:", session.status, "answers:", JSON.stringify(session.answers))
+  log("[resumeOrRun] session:", session.id, "status:", session.status, "answers:", JSON.stringify(session.answers))
   if (session.status === "completed") {
-    console.error("[resumeOrRun] session completed, returning recommendation")
+    log("[resumeOrRun] session completed, returning recommendation")
     return recommendationPayload(db, session.id, session.access_token)
   }
   const hasPendingQuestion = (session.answers ?? []).some((a: QuestionAnswer) => !a.answer)
   if (hasPendingQuestion) {
-    console.error("[resumeOrRun] has pending question, returning it")
+    log("[resumeOrRun] has pending question, returning it")
     return questionPayload(session, true)
   }
-  console.error("[resumeOrRun] no pending question, running agent")
+  log("[resumeOrRun] no pending question, running agent")
   return runAgent(db, session, true)
 }
 
 async function handleStart(db: any, body: JsonObject): Promise<JsonObject> {
-  console.error("[handleStart] body:", JSON.stringify(body))
+  log("[handleStart] body:", JSON.stringify(body))
   const deviceId = requiredText(body.device_id, "device_id", 8, 128)
   const initialMood = Number(body.initial_mood)
-  console.error("[handleStart] deviceId:", deviceId, "initialMood:", initialMood)
+  log("[handleStart] deviceId:", deviceId, "initialMood:", initialMood)
   const initialAnswers: QuestionAnswer[] =
     Number.isInteger(initialMood) && initialMood >= 0 && initialMood <= 10
       ? [{
@@ -380,54 +390,54 @@ async function handleStart(db: any, body: JsonObject): Promise<JsonObject> {
       }]
       : []
 
-  console.error("[handleStart] initialAnswers:", JSON.stringify(initialAnswers))
+  log("[handleStart] initialAnswers:", JSON.stringify(initialAnswers))
   const session = await createSession(db, deviceId, initialAnswers)
   try {
-    console.error("[handleStart] session ready, calling resumeOrRun")
+    log("[handleStart] session ready, calling resumeOrRun")
     return await resumeOrRun(db, session)
   } catch (agentError) {
-    console.error("[handleStart] agent error:", String(agentError), "deleting session:", session.id)
+    log("[handleStart] agent error:", String(agentError), "deleting session:", session.id)
     await db.from("daily_music_sessions").delete().eq("id", session.id).then(() => {}, () => {})
     throw agentError
   }
 }
 
 async function handleAnswer(db: any, body: JsonObject): Promise<JsonObject> {
-  console.error("[handleAnswer] body:", JSON.stringify(body))
+  log("[handleAnswer] body:", JSON.stringify(body))
   const session = await getSession(db, body.session_id, body.access_token)
-  console.error("[handleAnswer] session:", session.id, "status:", session.status, "answers:", JSON.stringify(session.answers))
+  log("[handleAnswer] session:", session.id, "status:", session.status, "answers:", JSON.stringify(session.answers))
   if (session.status === "completed") return recommendationPayload(db, session.id)
   const answer = requiredText(body.answer, "answer", 1, 600)
   const answers = Array.isArray(session.answers) ? [...session.answers] : []
   const pendingIndex = answers.findIndex((item) => !item.answer)
-  if (pendingIndex < 0) { console.error("[handleAnswer] no pending question, running agent directly"); return runAgent(db, session, true) }
+  if (pendingIndex < 0) { log("[handleAnswer] no pending question, running agent directly"); return runAgent(db, session, true) }
   answers[pendingIndex] = { ...answers[pendingIndex], answer }
-  console.error("[handleAnswer] saving answer at index:", pendingIndex, "answer:", answer)
-  console.error("[handleAnswer] full answers after save:", JSON.stringify(answers))
+  log("[handleAnswer] saving answer at index:", pendingIndex, "answer:", answer)
+  log("[handleAnswer] full answers after save:", JSON.stringify(answers))
   const { data, error } = await db
     .from("daily_music_sessions")
     .update({ answers })
     .eq("id", session.id)
     .select("id, access_token, device_id, status, answers")
     .single()
-  if (error) { console.error("[handleAnswer] update error:", error); throw error }
-  console.error("[handleAnswer] answer saved, running agent")
+  if (error) { log("[handleAnswer] update error:", error); throw error }
+  log("[handleAnswer] answer saved, running agent")
   return runAgent(db, data, true)
 }
 
 async function handleStatus(db: any, body: JsonObject): Promise<JsonObject> {
-  console.error("[handleStatus] body:", JSON.stringify(body))
+  log("[handleStatus] body:", JSON.stringify(body))
   const session = await getSession(db, body.session_id, body.access_token)
-  console.error("[handleStatus] session:", session.id, "status:", session.status, "answers:", JSON.stringify(session.answers))
+  log("[handleStatus] session:", session.id, "status:", session.status, "answers:", JSON.stringify(session.answers))
   if (session.status === "completed") return recommendationPayload(db, session.id)
   const hasPendingQuestion = (session.answers ?? []).some((item) => !item.answer)
-  if (hasPendingQuestion) { console.error("[handleStatus] returning pending question"); return questionPayload(session, true) }
-  console.error("[handleStatus] running agent")
+  if (hasPendingQuestion) { log("[handleStatus] returning pending question"); return questionPayload(session, true) }
+  log("[handleStatus] running agent")
   return runAgent(db, session, true)
 }
 
 async function handleFeedback(db: any, body: JsonObject): Promise<JsonObject> {
-  console.error("[handleFeedback] body:", JSON.stringify(body))
+  log("[handleFeedback] body:", JSON.stringify(body))
   const session = await getSession(db, body.session_id, body.access_token)
   if (session.status !== "completed") {
     throw new ClientError("La sesión todavía no tiene una recomendación", 409)
@@ -449,10 +459,11 @@ export default {
     if (req.method !== "POST") return json({ error: "Método no permitido" }, 405)
     try {
       const body = await req.json()
-      console.error("[handler] ====== INCOMING REQUEST ======")
-      console.error("[handler] action:", body?.action)
-      console.error("[handler] full body:", JSON.stringify(body))
-      console.error("[handler] ==============================")
+      _logs = []
+      log("[handler] ====== INCOMING REQUEST ======")
+      log("[handler] action: " + (body?.action || ""))
+      log("[handler] full body: " + JSON.stringify(body))
+      log("[handler] ==============================")
       const action = body?.action
       let result: JsonObject
       if (action === "start") result = await handleStart(ctx.supabaseAdmin, body)
@@ -460,13 +471,13 @@ export default {
       else if (action === "status") result = await handleStatus(ctx.supabaseAdmin, body)
       else if (action === "feedback") result = await handleFeedback(ctx.supabaseAdmin, body)
       else throw new ClientError("action debe ser start, answer, status o feedback")
-      console.error("[handler] response:", JSON.stringify(result).slice(0, 300))
+      log("[handler] response:", JSON.stringify(result).slice(0, 300))
       return json(result)
     } catch (error) {
-      console.error("[handler] ====== ERROR ======")
-      console.error("[handler] message:", messageOf(error))
-      console.error("[handler] stack:", error instanceof Error ? error.stack : "")
-      console.error("[handler] ====================")
+      log("[handler] ====== ERROR ======")
+      log("[handler] message:", messageOf(error))
+      log("[handler] stack:", error instanceof Error ? error.stack : "")
+      log("[handler] ====================")
       const status = error instanceof ClientError ? error.status : 500
       return json({ error: messageOf(error) }, status)
     }

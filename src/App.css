@@ -1117,6 +1117,150 @@
 
 @keyframes agent-spin { to { transform: rotate(360deg); } }
 
+/* ============================================
+   MIAMI VICE — MoodSlider Theme
+   ============================================ */
+.mood-slider {
+  background: linear-gradient(
+    135deg,
+    #0a0a1a 0%,
+    #1a0a2e 40%,
+    #2d1b4e 70%,
+    #0a0a1a 100%
+  );
+}
+
+.mood-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.mood-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0, 245, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 245, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.mood-glow-bottom {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(
+    to top,
+    rgba(255, 107, 53, 0.15) 0%,
+    rgba(255, 45, 149, 0.08) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.mood-eyebrow {
+  font-family: 'Orbitron', 'Inter', sans-serif;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.45em;
+  text-transform: uppercase;
+  color: var(--pink);
+  text-shadow: 0 0 20px rgba(255, 45, 149, 0.4);
+  margin-bottom: -8px;
+}
+
+.mood-card {
+  background: rgba(26, 10, 46, 0.85);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(0, 245, 255, 0.3);
+  box-shadow:
+    0 0 20px rgba(0, 245, 255, 0.4),
+    inset 0 0 30px rgba(157, 78, 221, 0.1);
+  border-radius: 4px;
+  padding: 2.5rem 2.5rem 2rem;
+}
+
+.mood-heading {
+  font-family: 'Orbitron', 'Playfair Display', serif;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, var(--cyan), #fff, var(--pink));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 12px rgba(0, 245, 255, 0.45));
+  animation: vice-glow 3s ease-in-out infinite alternate;
+}
+
+@keyframes vice-glow {
+  from {
+    filter: drop-shadow(0 0 8px rgba(0, 245, 255, 0.35));
+  }
+  to {
+    filter: drop-shadow(0 0 18px rgba(255, 45, 149, 0.5));
+  }
+}
+
+.mood-btn {
+  background: linear-gradient(90deg, var(--pink), var(--purple));
+  color: #fff;
+  border: none;
+  border-radius: 2px;
+  box-shadow: 0 0 20px rgba(255, 45, 149, 0.4);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.mood-btn:hover {
+  opacity: 1;
+  transform: translateY(-2px);
+  box-shadow: 0 0 30px rgba(255, 45, 149, 0.6);
+}
+
+.mood-btn:active {
+  transform: translateY(0);
+  opacity: 0.85;
+}
+
+/* ============================================
+   DAILY VIBE — Background for Agent Quiz
+   ============================================ */
+.agent-quiz {
+  background:
+    radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--pink) 20%, transparent), transparent 32%),
+    radial-gradient(circle at 85% 75%, color-mix(in srgb, var(--cyan) 17%, transparent), transparent 30%),
+    var(--black) !important;
+}
+
+.daily-notes {
+  position: fixed;
+  inset: 8% auto auto 5%;
+  font: 700 clamp(48px, 12vw, 130px)/1 serif;
+  color: var(--purple);
+  opacity: .12;
+  transform: rotate(-12deg);
+  animation: daily-float 7s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes daily-float {
+  to { transform: translate(25px, 25px) rotate(8deg); opacity: .2; }
+}
+
 @media (max-width: 560px) {
   .daily-options { grid-template-columns: 1fr; }
   .daily-custom { flex-direction: column; }

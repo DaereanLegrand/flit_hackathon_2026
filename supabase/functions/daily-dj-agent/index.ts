@@ -1,11 +1,8 @@
 import "@supabase/functions-js/edge-runtime.d.ts"
 import { withSupabase } from "@supabase/server"
-import { searchLastFmCandidates, type MusicSearchInput } from "./lastfm.ts"
-import { AGENT_SYSTEM_PROMPT, AGENT_TOOLS } from "./contract.ts"
-
-const GROQ_RESPONSES_URL = "https://api.groq.com/openai/v1/responses"
-const DEFAULT_GROQ_MODEL = "qwen/qwen3.6-27b"
-const MAX_QUESTIONS = 5
+import { searchLastFmCandidates, type LastFmCandidate } from "./lastfm.ts"
+import { AGENT_SYSTEM_PROMPT } from "./contract.ts"
+const LLM_URL = "https://flit-gemma.qallariy.lat/model/chat/completions"
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -35,7 +32,12 @@ function json(body: unknown, status = 200): Response {
 }
 
 function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : "Error inesperado"
+  if (error instanceof Error) return error.message
+  if (typeof error === "object" && error !== null) {
+    const obj = error as Record<string, unknown>
+    return String(obj.message ?? obj.error ?? obj.details ?? JSON.stringify(error))
+  }
+  return String(error)
 }
 
 function requiredText(value: unknown, name: string, min: number, max: number): string {
@@ -47,13 +49,9 @@ function requiredText(value: unknown, name: string, min: number, max: number): s
   return normalized
 }
 
-function optionalText(value: unknown, max: number): string | null {
-  if (value == null || value === "") return null
-  return requiredText(value, "valor", 1, max)
-}
-
 function isUuid(value: unknown): value is string {
-  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
+  return typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)
 }
 
 class ClientError extends Error {
@@ -62,42 +60,6 @@ class ClientError extends Error {
     super(message)
     this.status = status
   }
-}
-
-function parseToolArguments(call: JsonObject): JsonObject {
-  try {
-    return typeof call.arguments === "string" ? JSON.parse(call.arguments) : (call.arguments ?? {})
-  } catch {
-    throw new Error(`Groq devolvió argumentos inválidos para ${call.name}`)
-  }
-}
-
-async function callGroq(apiKey: string, model: string, input: unknown[]): Promise<JsonObject> {
-  const response = await fetch(GROQ_RESPONSES_URL, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model,
-      instructions: AGENT_SYSTEM_PROMPT,
-      input,
-      tools: AGENT_TOOLS,
-      tool_choice: "required",
-      parallel_tool_calls: false,
-      temperature: 0.35,
-      max_output_tokens: 900,
-    }),
-    signal: AbortSignal.timeout(20000),
-  })
-
-  const body = await response.json().catch(() => ({}))
-  if (!response.ok || body?.error) {
-    const detail = body?.error?.message || body?.message || `HTTP ${response.status}`
-    throw new Error(`Groq no pudo continuar el cuestionario: ${String(detail).slice(0, 300)}`)
-  }
-  return body
 }
 
 function publicTrack(candidate: JsonObject): JsonObject {
@@ -124,11 +86,15 @@ function questionPayload(session: SessionRow, includeToken = false): JsonObject 
     question_key: pending.key,
     question: pending.question,
     options: pending.options,
-    progress: { answered: answers.filter((item) => item.answer).length, maximum: MAX_QUESTIONS },
+    progress: { answered: answers.filter((item) => item.answer).length, maximum: 5 },
   }
 }
 
-async function recommendationPayload(db: any, sessionId: string, includeToken?: string): Promise<JsonObject> {
+async function recommendationPayload(
+  db: any,
+  sessionId: string,
+  includeToken?: string,
+): Promise<JsonObject> {
   const { data, error } = await db
     .from("daily_music_recommendations")
     .select("id, daily_vibe, reason, playlist, feedback, created_at")
@@ -149,8 +115,14 @@ async function recommendationPayload(db: any, sessionId: string, includeToken?: 
   }
 }
 
-async function getSession(db: any, sessionId: unknown, token: unknown): Promise<SessionRow> {
-  if (!isUuid(sessionId) || !isUuid(token)) throw new ClientError("session_id y access_token no son válidos")
+async function getSession(
+  db: any,
+  sessionId: unknown,
+  token: unknown,
+): Promise<SessionRow> {
+  if (!isUuid(sessionId) || !isUuid(token)) {
+    throw new ClientError("session_id y access_token no son válidos")
+  }
   const { data, error } = await db
     .from("daily_music_sessions")
     .select("id, access_token, device_id, status, answers")
@@ -162,197 +134,293 @@ async function getSession(db: any, sessionId: unknown, token: unknown): Promise<
   return data as SessionRow
 }
 
-async function saveQuestion(db: any, session: SessionRow, args: JsonObject): Promise<SessionRow> {
-  const previous = Array.isArray(session.answers) ? session.answers : []
-  if (previous.some((item) => !item.answer)) throw new Error("Ya existe una pregunta pendiente")
-  if (previous.length >= MAX_QUESTIONS) throw new Error("El agente excedió el máximo de preguntas")
-  const key = requiredText(args.question_key, "question_key", 2, 30)
-  const question = requiredText(args.question, "question", 5, 180)
-  if (!Array.isArray(args.options) || args.options.length < 2 || args.options.length > 6) {
-    throw new Error("El agente devolvió una cantidad inválida de opciones")
+async function callLLM(messages: unknown[]): Promise<string> {
+  console.error("[callLLM] URL:", LLM_URL, "messages count:", messages.length)
+  console.error("[callLLM] messages:", JSON.stringify(messages).slice(0, 500))
+  const headers: Record<string, string> = { "Content-Type": "application/json" }
+  let res: Response
+  try {
+    res = await fetch(LLM_URL, {
+      method: "POST", headers,
+      body: JSON.stringify({ messages, temperature: 0.35, max_tokens: 900, stream: false }),
+      signal: AbortSignal.timeout(30000),
+    })
+    console.error("[callLLM] response status:", res.status, res.statusText)
+  } catch (e) {
+    console.error("[callLLM] fetch failed:", String(e))
+    throw new Error(`LLM fetch failed: ${String(e).slice(0, 300)}`)
   }
-  const options = [...new Set(args.options.map((option: unknown) => requiredText(option, "opción", 1, 70)))]
-  if (options.length < 2) throw new Error("Las opciones de la pregunta deben ser diferentes")
-  const answers = [...previous, { key, question, options, answer: null }]
-  const { data, error } = await db
-    .from("daily_music_sessions")
-    .update({ answers, status: "questioning" })
-    .eq("id", session.id)
-    .select("id, access_token, device_id, status, answers")
-    .single()
-  if (error) throw error
-  return data
+  let body: any
+  try {
+    body = await res.json()
+    console.error("[callLLM] response body:", JSON.stringify(body).slice(0, 300))
+  } catch (e) {
+    console.error("[callLLM] JSON parse failed:", String(e))
+    const text = await res.text().catch(() => "")
+    console.error("[callLLM] raw response:", text.slice(0, 300))
+    throw new Error(`LLM response not JSON: ${text.slice(0, 200)}`)
+  }
+  if (!res.ok || body?.error) {
+    const detail = body?.error?.message || body?.message || `HTTP ${res.status}`
+    console.error("[callLLM] error response:", detail)
+    throw new Error(`LLM error: ${String(detail).slice(0, 300)}`)
+  }
+  const content = body.choices?.[0]?.message?.content ?? ""
+  console.error("[callLLM] content:", content.slice(0, 200))
+  return content
 }
 
-async function searchMusic(db: any, session: SessionRow, args: JsonObject, lastFmKey: string): Promise<JsonObject[]> {
-  if (!Array.isArray(args.desired_tags)) throw new Error("Groq no proporcionó desired_tags")
-  const input: MusicSearchInput = {
-    desired_tags: args.desired_tags.map((tag: unknown) => requiredText(tag, "tag", 1, 60)).slice(0, 3),
-    seed_artist: optionalText(args.seed_artist, 300),
-    seed_track: optionalText(args.seed_track, 300),
-  }
-  const candidates = await searchLastFmCandidates(lastFmKey, input)
-  const rows = candidates.map((candidate) => ({ ...candidate, session_id: session.id }))
-  const { data, error } = await db
-    .from("daily_music_candidates")
-    .upsert(rows, { onConflict: "session_id,provider_key" })
-    .select("id, track_name, artist_name, source_type, source_value, score")
-  if (error) throw error
-  await db.from("daily_music_sessions").update({ status: "searching" }).eq("id", session.id)
-  return (data ?? []).map((candidate: JsonObject) => ({
-    id: candidate.id,
-    title: candidate.track_name,
-    artist: candidate.artist_name,
-    source: `${candidate.source_type}:${candidate.source_value}`,
-    relevance: Number(candidate.score),
-  }))
+function buildUserContextBlock(_deviceId: string): string {
+  return ""
 }
 
-async function saveRecommendation(db: any, session: SessionRow, args: JsonObject): Promise<JsonObject> {
-  const primaryId = requiredText(args.primary_candidate_id, "primary_candidate_id", 10, 100)
-  if (!Array.isArray(args.playlist_candidate_ids)) throw new Error("Groq no devolvió la playlist")
-  const requestedIds = [...new Set([primaryId, ...args.playlist_candidate_ids])].slice(0, 6)
-  if (!requestedIds.every(isUuid)) throw new Error("Groq intentó usar IDs de canciones inválidos")
+function generateTagPrompt(conversation: string): string {
+  return `Basado en esta conversación sobre el estado de ánimo del usuario:
 
-  const { data: candidates, error: candidateError } = await db
-    .from("daily_music_candidates")
-    .select("id, track_name, artist_name, lastfm_url, metadata, score")
-    .eq("session_id", session.id)
-    .in("id", requestedIds)
-  if (candidateError) throw candidateError
-  if (!candidates || candidates.length !== requestedIds.length) {
-    throw new Error("Groq intentó recomendar una canción que Last.fm no devolvió")
+"${conversation}"
+
+Genera una lista de 3 a 6 tags de música que reflejen las emociones y el estado de ánimo descritos.
+Los tags deben ser en español, incluyendo géneros musicales, estados de ánimo, estilos y vibes.
+Ejemplos: "música alegre", "rock energético", "chill melancholy", "latin pop", "música para relajarse", "electrónica", "baladas románticas", "indie folk", "música motivacional", "ritmos bailables", "música instrumental", "punk", "reggaetón", "salsa", "música clásica", "jazz", "hip hop", "R&B", "música acústica", "k-pop", "música africana", "rock clásico", "metal", "blues", "country", "música experimental", "lo-fi", "música para dormir", "música para concentrarse", "música para hacer ejercicio"
+
+SOLO responde con los tags separados por comas. Sin explicaciones ni intro.`
+}
+
+async function askNextQuestion(db: any, session: SessionRow, includeToken: boolean): Promise<JsonObject> {
+  const answered = session.answers.filter(a => a.answer)
+  console.error("[askNextQuestion] START answered count:", answered.length, "session:", session.id)
+  console.error("[askNextQuestion] answered details:", JSON.stringify(answered))
+
+  const contextBlock = buildUserContextBlock(session.device_id)
+  const messages: JsonObject[] = [
+    { role: "system", content: AGENT_SYSTEM_PROMPT },
+    { role: "user", content: contextBlock ? `Contexto del usuario:\n${contextBlock}` : "No hay contexto adicional." },
+  ]
+  for (const a of answered) {
+    messages.push({ role: "assistant", content: a.question })
+    messages.push({ role: "user", content: a.answer! })
+  }
+  messages.push({ role: "user", content: "Haz una pregunta corta. Máximo 2 oraciones." })
+
+  console.error("[askNextQuestion] calling LLM with", messages.length, "messages")
+  const llmText = await callLLM(messages)
+  console.error("[askNextQuestion] LLM returned question:", llmText)
+
+  const key = ["mood", "energy", "intention", "discovery"][answered.length] || "discovery"
+  const newAnswers = [...session.answers, { key, question: llmText, options: [], answer: null }]
+  console.error("[askNextQuestion] saving newAnswers:", JSON.stringify(newAnswers))
+  const { error } = await db.from("daily_music_sessions").update({ answers: newAnswers }).eq("id", session.id)
+  if (error) { console.error("[askNextQuestion] DB update error:", error); throw error }
+
+  console.error("[askNextQuestion] END returning question payload")
+  return questionPayload({ ...session, answers: newAnswers }, includeToken)
+}
+
+async function handleRecommendation(db: any, session: SessionRow, includeToken: boolean): Promise<JsonObject> {
+  const answered = session.answers.filter(a => a.answer)
+  const allText = answered.map(a => `${a.question} ${a.answer}`).join(" ")
+  console.error("[handleRecommendation] START full conversation:", allText)
+
+  // LLM generates search tags based on conversation
+  const tagPrompt = generateTagPrompt(allText)
+  console.error("[handleRecommendation] calling LLM for tag generation")
+  let tags: string[] = []
+  try {
+    const llmTags = await callLLM([
+      { role: "system", content: "Eres un asistente que genera tags musicales basados en estados de ánimo." },
+      { role: "user", content: tagPrompt },
+    ])
+    tags = llmTags.split(",").map(t => t.trim().toLowerCase()).filter(t => t.length > 0 && t.length <= 60)
+    if (tags.length === 0) tags = ["música variada"]
+    console.error("[handleRecommendation] LLM generated tags:", tags)
+  } catch (e) {
+    console.error("[handleRecommendation] LLM tag generation failed:", String(e))
+    tags = ["pop", "rock", "latin", "música alegre", "música para sentirse bien"]
+    console.error("[handleRecommendation] using fallback tags:", tags)
   }
 
-  const byId = new Map(candidates.map((candidate: JsonObject) => [candidate.id, candidate]))
-  const playlist = requestedIds.map((id) => publicTrack(byId.get(id)!))
-  const dailyVibe = requiredText(args.daily_vibe, "daily_vibe", 1, 120)
-  const reason = requiredText(args.reason, "reason", 1, 600)
-  const { error } = await db.from("daily_music_recommendations").insert({
-    session_id: session.id,
-    primary_candidate_id: primaryId,
-    daily_vibe: dailyVibe,
-    reason,
-    playlist,
+  console.error("[handleRecommendation] searching Last.fm with tags:", tags)
+  const candidates = await searchLastFmCandidates("daf019cb0f3fbf8cc66db66d034e11ee", { desired_tags: tags, seed_artist: null, seed_track: null }).catch((e) => {
+    console.error("[handleRecommendation] Last.fm search failed:", String(e))
+    return [] as LastFmCandidate[]
   })
-  if (error) throw error
-  const { error: sessionError } = await db
-    .from("daily_music_sessions")
-    .update({ status: "completed", completed_at: new Date().toISOString() })
-    .eq("id", session.id)
-  if (sessionError) throw sessionError
-  return recommendationPayload(db, session.id)
+  console.error("[handleRecommendation] Last.fm returned", candidates.length, "candidates")
+
+  const top = candidates.slice(0, 5)
+  console.error("[handleRecommendation] top 5 candidates:", top.map(c => `${c.track_name} - ${c.artist_name}`))
+
+  await db.from("daily_music_candidates").upsert(
+    top.map(c => ({ ...c, session_id: session.id })),
+    { onConflict: "session_id,provider_key", ignoreDuplicates: true },
+  ).then(() => {}, () => {})
+
+  const { data: savedCandidates, error: fetchErr } = await db
+    .from("daily_music_candidates")
+    .select("id, provider_key, track_name, artist_name, lastfm_url, mbid, source_type, source_value, score, metadata")
+    .eq("session_id", session.id)
+    .order("score", { ascending: false })
+    .limit(5)
+  if (fetchErr) { console.error("[handleRecommendation] fetch candidates error:", fetchErr); throw fetchErr }
+  if (!savedCandidates?.length) { console.error("[handleRecommendation] no saved candidates"); throw new Error("No se pudieron guardar los candidatos") }
+  console.error("[handleRecommendation] saved candidates with IDs:", savedCandidates.map(c => ({ id: c.id, track: c.track_name })))
+
+  const contextBlock = buildUserContextBlock(session.device_id)
+  const messages: JsonObject[] = [
+    { role: "system", content: AGENT_SYSTEM_PROMPT },
+    { role: "user", content: contextBlock ? `Contexto del usuario:\n${contextBlock}` : "No hay contexto adicional." },
+  ]
+  for (const a of answered) {
+    messages.push({ role: "assistant", content: a.question })
+    messages.push({ role: "user", content: a.answer! })
+  }
+  messages.push({
+    role: "user",
+    content: `Aquí hay canciones reales de nuestra biblioteca musical. Elige una y recomiéndala, explicando por qué va con el estado de ánimo del usuario.\n\nCanciones disponibles:\n${savedCandidates.map((c, i) => `${i + 1}. "${c.track_name}" — ${c.artist_name}`).join("\n")}\n\nRecomienda UNA canción. Máximo 3 oraciones.`,
+  })
+
+  console.error("[handleRecommendation] calling LLM for recommendation")
+  const llmText = await callLLM(messages)
+  console.error("[handleRecommendation] LLM recommendation:", llmText.slice(0, 200))
+
+  if (!llmText) llmText = `Te recomiendo "${savedCandidates[0].track_name}" de ${savedCandidates[0].artist_name}.`
+
+  const primary = savedCandidates[0]
+  const playlist = savedCandidates.slice(0, 4)
+
+  console.error("[handleRecommendation] inserting recommendation, primary_candidate_id:", primary.id)
+  const vibe = tags.join(", ").slice(0, 120) || "música variada"
+  const { error: recError } = await db.from("daily_music_recommendations").insert({
+    session_id: session.id,
+    primary_candidate_id: primary.id,
+    daily_vibe: vibe,
+    reason: llmText.slice(0, 600),
+    playlist: playlist.map(c => publicTrack(c)),
+  })
+  if (recError) { console.error("[handleRecommendation] insert error:", recError); throw recError }
+
+  console.error("[handleRecommendation] marking session completed")
+  await db.from("daily_music_sessions").update({ status: "completed", completed_at: new Date().toISOString() }).eq("id", session.id).then(() => {}, () => {})
+  console.error("[handleRecommendation] END returning recommendation payload")
+  return recommendationPayload(db, session.id, includeToken ? session.access_token : undefined)
 }
 
 async function runAgent(db: any, session: SessionRow, includeToken = false): Promise<JsonObject> {
-  const groqKey = Deno.env.get("GROQ_API_KEY")
-  const lastFmKey = Deno.env.get("LASTFM_API_KEY")
-  if (!groqKey || !lastFmKey) {
-    throw new Error("Faltan GROQ_API_KEY o LASTFM_API_KEY en el servidor de Edge Functions")
+  console.error("[runAgent] START session:", session.id)
+  console.error("[runAgent] all answers:", JSON.stringify(session.answers))
+
+  const answeredCount = session.answers.filter(a => a.answer).length
+  console.error("[runAgent] answered count:", answeredCount)
+
+  if (answeredCount >= 3) {
+    console.error("[runAgent] answeredCount >= 3, calling handleRecommendation")
+    return handleRecommendation(db, session, includeToken)
+  } else {
+    console.error("[runAgent] answeredCount < 3, calling askNextQuestion")
+    return askNextQuestion(db, session, includeToken)
   }
-
-  const model = Deno.env.get("GROQ_MODEL") || DEFAULT_GROQ_MODEL
-  const answered = (session.answers ?? []).filter((item) => item.answer).map((item) => ({
-    topic: item.key,
-    question: item.question,
-    answer: item.answer,
-  }))
-  let input: unknown[] = [{
-    role: "user",
-    content: `Estado actual de la sesión:\n${JSON.stringify({ answered, question_count: session.answers?.length ?? 0 })}`,
-  }]
-
-  for (let round = 0; round < 4; round += 1) {
-    const response = await callGroq(groqKey, model, input)
-    const calls = (response.output ?? []).filter((item: JsonObject) => item.type === "function_call")
-    if (calls.length !== 1) throw new Error("Groq debía ejecutar exactamente una herramienta")
-    const call = calls[0]
-    const args = parseToolArguments(call)
-
-    if (call.name === "ask_question") {
-      const updated = await saveQuestion(db, session, args)
-      return questionPayload(updated, includeToken)
-    }
-    if (call.name === "choose_recommendation") {
-      const result = await saveRecommendation(db, session, args)
-      return includeToken ? { ...result, access_token: session.access_token } : result
-    }
-    if (call.name !== "search_music") throw new Error(`Herramienta desconocida: ${call.name}`)
-
-    const candidates = await searchMusic(db, session, args, lastFmKey)
-    input = [
-      ...input,
-      ...(response.output ?? []),
-      {
-        type: "function_call_output",
-        call_id: call.call_id,
-        output: JSON.stringify({ candidates }),
-      },
-    ]
-  }
-  throw new Error("El agente no terminó dentro del número máximo de pasos")
 }
 
-async function handleStart(db: any, body: JsonObject): Promise<JsonObject> {
-  const deviceId = requiredText(body.device_id, "device_id", 8, 128)
-  const initialMood = Number(body.initial_mood)
-  const initialAnswers: QuestionAnswer[] = Number.isInteger(initialMood) && initialMood >= 0 && initialMood <= 10
-    ? [{
-      key: "mood",
-      question: "¿Cómo te sientes hoy?",
-      options: [],
-      answer: `${initialMood}/10 de bienestar emocional`,
-    }]
-    : []
+async function createSession(db: any, deviceId: string, initialAnswers: QuestionAnswer[]): Promise<SessionRow> {
+  console.error("[createSession] device:", deviceId, "initialAnswers:", JSON.stringify(initialAnswers))
+  const today = new Date().toISOString().slice(0, 10)
+  console.error("[createSession] deleting any existing session for device:", deviceId, "on:", today)
+  await db.from("daily_music_sessions").delete().eq("device_id", deviceId).gte("created_at", today).then(() => {}, () => {})
+  console.error("[createSession] inserting fresh session")
   const { data, error } = await db
     .from("daily_music_sessions")
     .insert({ device_id: deviceId, answers: initialAnswers })
     .select("id, access_token, device_id, status, answers")
     .single()
-  if (error?.code === "23505") {
-    throw new ClientError("Ya existe una sesión para este dispositivo hoy. Continúa usando el token guardado.", 409)
+  if (error) {
+    console.error("[createSession] insert error:", error)
+    throw error
   }
-  if (error) throw error
+  console.error("[createSession] created fresh session:", data.id)
+  return data as SessionRow
+}
+
+async function resumeOrRun(db: any, session: SessionRow): Promise<JsonObject> {
+  console.error("[resumeOrRun] session:", session.id, "status:", session.status, "answers:", JSON.stringify(session.answers))
+  if (session.status === "completed") {
+    console.error("[resumeOrRun] session completed, returning recommendation")
+    return recommendationPayload(db, session.id, session.access_token)
+  }
+  const hasPendingQuestion = (session.answers ?? []).some((a: QuestionAnswer) => !a.answer)
+  if (hasPendingQuestion) {
+    console.error("[resumeOrRun] has pending question, returning it")
+    return questionPayload(session, true)
+  }
+  console.error("[resumeOrRun] no pending question, running agent")
+  return runAgent(db, session, true)
+}
+
+async function handleStart(db: any, body: JsonObject): Promise<JsonObject> {
+  console.error("[handleStart] body:", JSON.stringify(body))
+  const deviceId = requiredText(body.device_id, "device_id", 8, 128)
+  const initialMood = Number(body.initial_mood)
+  console.error("[handleStart] deviceId:", deviceId, "initialMood:", initialMood)
+  const initialAnswers: QuestionAnswer[] =
+    Number.isInteger(initialMood) && initialMood >= 0 && initialMood <= 10
+      ? [{
+        key: "mood",
+        question: "¿Cómo te sientes hoy?",
+        options: [],
+        answer: `${initialMood}/10 de bienestar emocional`,
+      }]
+      : []
+
+  console.error("[handleStart] initialAnswers:", JSON.stringify(initialAnswers))
+  const session = await createSession(db, deviceId, initialAnswers)
   try {
-    return await runAgent(db, data, true)
+    console.error("[handleStart] session ready, calling resumeOrRun")
+    return await resumeOrRun(db, session)
   } catch (agentError) {
-    // El cliente todavía no recibió el token. Eliminar la sesión evita dejarlo
-    // bloqueado por la restricción de una sesión diaria si Groq falla al iniciar.
-    await db.from("daily_music_sessions").delete().eq("id", data.id)
+    console.error("[handleStart] agent error:", String(agentError), "deleting session:", session.id)
+    await db.from("daily_music_sessions").delete().eq("id", session.id).then(() => {}, () => {})
     throw agentError
   }
 }
 
 async function handleAnswer(db: any, body: JsonObject): Promise<JsonObject> {
+  console.error("[handleAnswer] body:", JSON.stringify(body))
   const session = await getSession(db, body.session_id, body.access_token)
+  console.error("[handleAnswer] session:", session.id, "status:", session.status, "answers:", JSON.stringify(session.answers))
   if (session.status === "completed") return recommendationPayload(db, session.id)
   const answer = requiredText(body.answer, "answer", 1, 600)
   const answers = Array.isArray(session.answers) ? [...session.answers] : []
   const pendingIndex = answers.findIndex((item) => !item.answer)
-  // Una respuesta anterior pudo guardarse aunque Groq/Last.fm fallara después.
-  // Reintentar en ese caso continúa el agente sin duplicar la respuesta.
-  if (pendingIndex < 0) return runAgent(db, session)
+  if (pendingIndex < 0) { console.error("[handleAnswer] no pending question, running agent directly"); return runAgent(db, session) }
   answers[pendingIndex] = { ...answers[pendingIndex], answer }
+  console.error("[handleAnswer] saving answer at index:", pendingIndex, "answer:", answer)
+  console.error("[handleAnswer] full answers after save:", JSON.stringify(answers))
   const { data, error } = await db
     .from("daily_music_sessions")
     .update({ answers })
     .eq("id", session.id)
     .select("id, access_token, device_id, status, answers")
     .single()
-  if (error) throw error
+  if (error) { console.error("[handleAnswer] update error:", error); throw error }
+  console.error("[handleAnswer] answer saved, running agent")
   return runAgent(db, data)
 }
 
 async function handleStatus(db: any, body: JsonObject): Promise<JsonObject> {
+  console.error("[handleStatus] body:", JSON.stringify(body))
   const session = await getSession(db, body.session_id, body.access_token)
+  console.error("[handleStatus] session:", session.id, "status:", session.status, "answers:", JSON.stringify(session.answers))
   if (session.status === "completed") return recommendationPayload(db, session.id)
   const hasPendingQuestion = (session.answers ?? []).some((item) => !item.answer)
-  return hasPendingQuestion ? questionPayload(session) : runAgent(db, session)
+  if (hasPendingQuestion) { console.error("[handleStatus] returning pending question"); return questionPayload(session) }
+  console.error("[handleStatus] running agent")
+  return runAgent(db, session)
 }
 
 async function handleFeedback(db: any, body: JsonObject): Promise<JsonObject> {
+  console.error("[handleFeedback] body:", JSON.stringify(body))
   const session = await getSession(db, body.session_id, body.access_token)
-  if (session.status !== "completed") throw new ClientError("La sesión todavía no tiene una recomendación", 409)
+  if (session.status !== "completed") {
+    throw new ClientError("La sesión todavía no tiene una recomendación", 409)
+  }
   if (!["liked", "disliked", "another"].includes(body.feedback)) {
     throw new ClientError("feedback debe ser liked, disliked o another")
   }
@@ -370,6 +438,10 @@ export default {
     if (req.method !== "POST") return json({ error: "Método no permitido" }, 405)
     try {
       const body = await req.json()
+      console.error("[handler] ====== INCOMING REQUEST ======")
+      console.error("[handler] action:", body?.action)
+      console.error("[handler] full body:", JSON.stringify(body))
+      console.error("[handler] ==============================")
       const action = body?.action
       let result: JsonObject
       if (action === "start") result = await handleStart(ctx.supabaseAdmin, body)
@@ -377,9 +449,13 @@ export default {
       else if (action === "status") result = await handleStatus(ctx.supabaseAdmin, body)
       else if (action === "feedback") result = await handleFeedback(ctx.supabaseAdmin, body)
       else throw new ClientError("action debe ser start, answer, status o feedback")
+      console.error("[handler] response:", JSON.stringify(result).slice(0, 300))
       return json(result)
     } catch (error) {
-      console.error("daily-dj-agent", messageOf(error))
+      console.error("[handler] ====== ERROR ======")
+      console.error("[handler] message:", messageOf(error))
+      console.error("[handler] stack:", error instanceof Error ? error.stack : "")
+      console.error("[handler] ====================")
       const status = error instanceof ClientError ? error.status : 500
       return json({ error: messageOf(error) }, status)
     }

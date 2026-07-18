@@ -3,8 +3,9 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import MiniMap from './MiniMap'
 import useRoomSongs from './hooks/useRoomSongs'
+import useAgentSession from './hooks/useAgentSession'
 import MoodSlider from './MoodSlider'
-import QuestionPlaceholder from './QuestionPlaceholder'
+import SongSearch from './SongSearch'
 
 function getDeviceId() {
   let id = localStorage.getItem('device_id')
@@ -20,20 +21,17 @@ export default function ScanPage() {
   const [nickname, setNickname] = useState('')
   const [phase, setPhase] = useState('form')
   const [quizStep, setQuizStep] = useState(1)
-  const [_moodValue, setMoodValue] = useState(null)
+  const [moodValue, setMoodValue] = useState(null)
   const [showSearch, setShowSearch] = useState(false)
   const [participants, setParticipants] = useState([])
   const [error, setError] = useState('')
-  const [query, setQuery] = useState('')
-  const [results, setResults] = useState([])
-  const [searching, setSearching] = useState(false)
   const [location, setLocation] = useState(null)
+  const [customAnswer, setCustomAnswer] = useState('')
   const deviceId = useRef(getDeviceId())
   const intervalRef = useRef(null)
-  const searchTimer = useRef(null)
-  const errorTimer = useRef(null)
 
   const { songs: topSongs, addSong, votedKeys } = useRoomSongs(hash, deviceId.current)
+  const { result: agentResult, loading: agentLoading, error: agentError, answer: agentAnswer, feedback: agentFeedback } = useAgentSession(moodValue)
 
   const savedNickname = localStorage.getItem(`room_${hash}`)
 
@@ -80,52 +78,10 @@ export default function ScanPage() {
     }
   }, [phase])
 
-  function handleSearchChange(value) {
-    setQuery(value)
-    clearTimeout(searchTimer.current)
-    if (value.trim().length < 2) {
-      setResults([])
-      return
-    }
-    searchTimer.current = setTimeout(async () => {
-      setSearching(true)
-      try {
-        const { data } = await supabase.functions.invoke('search-songs', {
-          method: 'POST',
-          body: { q: value },
-        })
-        setResults(data?.results || [])
-      } catch {
-        setResults([])
-      } finally {
-        setSearching(false)
-      }
-    }, 400)
-  }
-
-  function formatTime(seconds) {
-    if (!seconds) return ''
-    const m = Math.floor(seconds / 60)
-    const s = Math.floor(seconds % 60)
-    return `${m}:${s.toString().padStart(2, '0')}`
-  }
-
-  async function handleAddSong(result) {
-    const title = result.title
-    const artist = result.artist
-    const coverUrl = result.cover?.small || result.cover?.large || null
-
-    const { ok, error: addErr } = await addSong(title, artist, coverUrl)
-    if (!ok) {
-      setError(addErr)
-      clearTimeout(errorTimer.current)
-      errorTimer.current = setTimeout(() => setError(''), 2500)
-      return
-    }
-    setShowSearch(false)
-    setQuery('')
-    setResults([])
-    setError('')
+  function handleAnswer(value) {
+    if (!value?.trim()) return
+    agentAnswer(value.trim())
+    setCustomAnswer('')
   }
 
   async function handleJoin(e) {
@@ -162,12 +118,77 @@ export default function ScanPage() {
         }} />
       )
     }
+
     if (quizStep === 2) {
       return (
-        <QuestionPlaceholder
-          initialMood={_moodValue}
-          onComplete={() => setPhase('room')}
-        />
+        <div className="mood-slider agent-quiz">
+          <div className="daily-notes" aria-hidden="true">♪　♫　♬</div>
+
+          <div className="mood-card agent-card">
+            {agentLoading && (
+              <div className="agent-loading">
+                <span />
+                <p>Buscando tu vibe...</p>
+              </div>
+            )}
+
+            {!agentLoading && agentResult?.type === 'question' && (
+              <>
+                <p className="agent-progress">Pregunta {agentResult.progress.answered + 1}</p>
+                <h1 className="mood-heading mood-heading--sm">{agentResult.question}</h1>
+                <div className="agent-options">
+                  {agentResult.options.map((option) => (
+                    <button key={option} onClick={() => handleAnswer(option)}>{option}</button>
+                  ))}
+                </div>
+                <form className="agent-custom" onSubmit={(event) => { event.preventDefault(); handleAnswer(customAnswer) }}>
+                  <input
+                    value={customAnswer}
+                    onChange={(event) => setCustomAnswer(event.target.value)}
+                    placeholder="Otra respuesta"
+                    maxLength={600}
+                  />
+                  <button type="submit" disabled={!customAnswer.trim()}>Enviar</button>
+                </form>
+                <div className="mood-steps">
+                  {Array.from({ length: 4 }, (_, index) => (
+                    <span key={index} className={`mood-dot${index <= agentResult.progress.answered ? ' mood-dot--on' : ''}`} />
+                  ))}
+                </div>
+              </>
+            )}
+
+            {!agentLoading && agentResult?.type === 'recommendation' && (
+              <div className="agent-result">
+                <p className="agent-progress">{agentResult.daily_vibe}</p>
+                <h1 className="mood-heading mood-heading--sm">{agentResult.song.title}</h1>
+                <h2>{agentResult.song.artist}</h2>
+                <p>{agentResult.reason}</p>
+                <div className="agent-listen">
+                  <a href={agentResult.song.spotify_search_url} target="_blank" rel="noreferrer">Spotify</a>
+                  <a href={agentResult.song.youtube_music_search_url} target="_blank" rel="noreferrer">YouTube Music</a>
+                </div>
+                <div className="agent-playlist">
+                  {agentResult.playlist.map((track, index) => (
+                    <a key={track.id} href={track.lastfm_url || track.youtube_music_search_url} target="_blank" rel="noreferrer">
+                      <span>{index + 1}</span>
+                      <strong>{track.title}</strong>
+                      <small>{track.artist}</small>
+                    </a>
+                  ))}
+                </div>
+                <button className="mood-btn" onClick={() => setPhase('room')}>Ir a la sala</button>
+              </div>
+            )}
+
+            {!agentLoading && agentError && (
+              <div className="agent-error">
+                <p>{agentError}</p>
+                <button className="mood-btn" onClick={() => setPhase('room')}>Ir a la sala</button>
+              </div>
+            )}
+          </div>
+        </div>
       )
     }
   }
@@ -206,84 +227,14 @@ export default function ScanPage() {
         )}
 
         {showSearch && (
-          <div className="search-section">
-            <input
-              className="search-input"
-              type="text"
-              placeholder="Buscar canción..."
-              value={query}
-              onChange={(e) => handleSearchChange(e.target.value)}
-              autoFocus
-            />
-            {searching && <p className="search-status">buscando...</p>}
-            <div className="search-results">
-              {results.map((r) => {
-                const key = `${r.title}|${r.artist}`
-                const alreadyAdded = votedKeys.has(key)
-                return (
-                  <div key={r.id} className="search-result">
-                    {r.cover && (
-                      <img src={r.cover.small} alt="" className="result-cover" />
-                    )}
-                    <div className="result-info">
-                      <span className="result-title">{r.title}</span>
-                      <span className="result-artist">{r.artist}</span>
-                    </div>
-                    <span className="result-year">{r.year}</span>
-                    {r.length > 0 && (
-                      <span className="result-duration">{formatTime(r.length / 1000)}</span>
-                    )}
-                    <button
-                      type="button"
-                      className="add-btn"
-                      onClick={() => handleAddSong(r)}
-                      disabled={alreadyAdded}
-                      aria-label={`Agregar ${r.title}`}
-                    >
-                      {alreadyAdded ? '✓' : '+'}
-                    </button>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
+          <SongSearch
+            onAddSong={addSong}
+            votedKeys={votedKeys}
+            topSongs={topSongs}
+          />
         )}
 
         {error && <p className="vote-error">{error}</p>}
-
-        {topSongs.length > 0 && (
-          <div className="search-top-list">
-            <p className="search-top-title">Top votadas</p>
-            {topSongs.map((song, i) => {
-              const key = `${song.title}|${song.artist}`
-              const alreadyVoted = votedKeys.has(key)
-              return (
-                <div key={song.id} className="search-top-item">
-                  <span className="search-top-rank">{i + 1}</span>
-                  <img
-                    src={song.coverUrl || '/placeholder-cover.png'}
-                    alt=""
-                    className="search-top-cover"
-                  />
-                  <div className="search-top-info">
-                    <span className="search-top-song">{song.title}</span>
-                    <span className="search-top-artist">{song.artist}</span>
-                  </div>
-                  <button
-                    type="button"
-                    className={`top-vote-btn${alreadyVoted ? ' top-vote-btn--active' : ''}`}
-                    onClick={() => handleAddSong({ title: song.title, artist: song.artist, cover: { small: song.coverUrl, large: song.coverUrl } })}
-                    disabled={alreadyVoted}
-                    aria-label={`Votar por ${song.title}`}
-                  >
-                    <span className="top-vote-count">{song.vote_count}</span>
-                    <span className="top-vote-heart">{alreadyVoted ? '♥' : '♡'}</span>
-                  </button>
-                </div>
-              )
-            })}
-          </div>
-        )}
       </div>
     )
   }

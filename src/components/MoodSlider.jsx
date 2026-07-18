@@ -64,7 +64,13 @@ export default function MoodSlider({ onComplete }) {
     >
       <div className="mood-bg" style={{ backgroundColor: `${accent}18` }} />
 
+      <div className="mood-scanlines" />
+      <div className="mood-grid" />
+
+      <div className="mood-glow-bottom" />
+
       <div className="mood-card">
+        <p className="mood-eyebrow">FLIT · disco</p>
         <h1 className="mood-heading">¿Cómo te sientes hoy?</h1>
 
         <div className="mood-track-area">

@@ -1,6 +1,6 @@
 # Vibe Daily DJ Agent
 
-Esta implementación conecta un agente musical diario al cuestionario que ya existía después de unirse a una sala. El usuario comienza con el slider **¿Cómo te sientes hoy?** y Groq genera las preguntas siguientes; Last.fm aporta canciones reales. El resultado es una canción principal, una playlist corta y enlaces para buscarla en Spotify o YouTube Music.
+Esta implementación ofrece dos accesos al mismo agente musical diario: el botón **MI VIBE DE HOY** de la pantalla principal abre `/daily-vibe`, y el cuestionario que ya existía después de unirse a una sala también continúa con preguntas del agente. Groq genera las preguntas y Last.fm aporta canciones reales.
 
 ## Qué se comparte por Git
 
@@ -9,6 +9,7 @@ Esta implementación conecta un agente musical diario al cuestionario que ya exi
 - `supabase/config.toml`: registra la función y carga los secretos desde el entorno del servidor.
 - `src/components/QuestionPlaceholder.jsx`: reemplaza el placeholder de la segunda pregunta por el agente real.
 - `src/components/ScanPage.jsx`: entrega al agente el valor seleccionado en `MoodSlider`.
+- `src/components/DailyVibePage.jsx`: conserva el acceso individual desde el botón **MI VIBE DE HOY**.
 - `supabase/.env.example`: nombres de variables, nunca claves reales.
 
 No se comparte `supabase/.env.local`; está ignorado por Git.
@@ -100,7 +101,7 @@ curl 'https://flit-api.qallariy.lat/functions/v1/daily-dj-agent' \
 
 La respuesta esperada tiene `type: "question"`, `session_id`, `access_token`, la pregunta y sus opciones. El token debe mantenerse privado y enviarse en los pasos siguientes.
 
-La interfaz se prueba creando una sala, abriendo su QR como participante y completando el slider **¿Cómo te sientes hoy?**. La siguiente pantalla ya no debe decir “próximamente”: debe mostrar una pregunta generada por el agente.
+La interfaz puede probarse desde el botón **MI VIBE DE HOY**, que abre `/daily-vibe`. También puede probarse creando una sala, abriendo su QR como participante y completando el slider **¿Cómo te sientes hoy?**; la siguiente pantalla ya no debe decir “próximamente”, sino mostrar una pregunta generada por el agente.
 
 Actualizar Supabase despliega el backend, pero no publica por sí mismo el frontend. El servicio que aloja React también debe ejecutar su proceso habitual de build/despliegue después del `git pull` para que el cuestionario existente use el agente.
 

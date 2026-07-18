@@ -2,18 +2,12 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
 import MiniMap from './MiniMap'
-import {
-  voteSong,
-  songKey,
-  getVotesMap,
-  buildRankedList,
-  VOTES_CHANGED_EVENT,
-} from './services/songVotes'
+import useRoomSongs from './hooks/useRoomSongs'
 
 function getDeviceId() {
   let id = localStorage.getItem('device_id')
   if (!id) {
-    id = crypto.randomUUID()
+    id = crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
     localStorage.setItem('device_id', id)
   }
   return id
@@ -22,19 +16,20 @@ function getDeviceId() {
 export default function ScanPage() {
   const { hash } = useParams()
   const [nickname, setNickname] = useState('')
-  const [phase, setPhase] = useState('form') // form → joining → room
+  const [phase, setPhase] = useState('form')
   const [showSearch, setShowSearch] = useState(false)
   const [participants, setParticipants] = useState([])
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [results, setResults] = useState([])
   const [searching, setSearching] = useState(false)
-  const [votesMap, setVotesMap] = useState({})
-  const [topSongs, setTopSongs] = useState([])
   const [location, setLocation] = useState(null)
   const deviceId = useRef(getDeviceId())
   const intervalRef = useRef(null)
   const searchTimer = useRef(null)
+  const errorTimer = useRef(null)
+
+  const { songs: topSongs, addSong, votedKeys } = useRoomSongs(hash, deviceId.current)
 
   const savedNickname = localStorage.getItem(`room_${hash}`)
 
@@ -81,34 +76,6 @@ export default function ScanPage() {
     }
   }, [phase])
 
-  const refreshVotes = useCallback(() => {
-    setVotesMap(getVotesMap())
-    setTopSongs(buildRankedList([]).filter((s) => s.vote_count > 0))
-  }, [])
-
-  useEffect(() => {
-    refreshVotes()
-    window.addEventListener(VOTES_CHANGED_EVENT, refreshVotes)
-    window.addEventListener('storage', refreshVotes)
-    return () => {
-      window.removeEventListener(VOTES_CHANGED_EVENT, refreshVotes)
-      window.removeEventListener('storage', refreshVotes)
-    }
-  }, [refreshVotes])
-
-  function handleVoteResult(result) {
-    voteSong({
-      title: result.title,
-      artist: result.artist,
-      coverUrl: result.cover?.small || result.cover?.large || null,
-    })
-    refreshVotes()
-  }
-
-  function getVoteCount(title, artist) {
-    return votesMap[songKey(title, artist)]?.votes || 0
-  }
-
   function handleSearchChange(value) {
     setQuery(value)
     clearTimeout(searchTimer.current)
@@ -137,6 +104,24 @@ export default function ScanPage() {
     const m = Math.floor(seconds / 60)
     const s = Math.floor(seconds % 60)
     return `${m}:${s.toString().padStart(2, '0')}`
+  }
+
+  async function handleAddSong(result) {
+    const title = result.title
+    const artist = result.artist
+    const coverUrl = result.cover?.small || result.cover?.large || null
+
+    const { ok, error: addErr } = await addSong(title, artist, coverUrl)
+    if (!ok) {
+      setError(addErr)
+      clearTimeout(errorTimer.current)
+      errorTimer.current = setTimeout(() => setError(''), 2500)
+      return
+    }
+    setShowSearch(false)
+    setQuery('')
+    setResults([])
+    setError('')
   }
 
   async function handleJoin(e) {
@@ -180,18 +165,18 @@ export default function ScanPage() {
         </div>
 
         {location && (
-            <div className="location-card">
-              <MiniMap lat={location.lat} lng={location.lng} />
-              <a
-                href={`https://www.google.com/maps?q=${location.lat},${location.lng}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="share-btn"
-              >
-                Como llegar
-              </a>
-            </div>
-          )}
+          <div className="location-card">
+            <MiniMap lat={location.lat} lng={location.lng} />
+            <a
+              href={`https://www.google.com/maps?q=${location.lat},${location.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="share-btn"
+            >
+              Como llegar
+            </a>
+          </div>
+        )}
 
         {!showSearch && (
           <button className="add-song-btn" onClick={() => setShowSearch(true)}>Agregar cancion</button>
@@ -209,52 +194,71 @@ export default function ScanPage() {
             />
             {searching && <p className="search-status">buscando...</p>}
             <div className="search-results">
-              {results.map((r) => (
-                <div key={r.id} className="search-result">
-                  {r.cover && (
-                    <img src={r.cover.small} alt="" className="result-cover" />
-                  )}
-                  <div className="result-info">
-                    <span className="result-title">{r.title}</span>
-                    <span className="result-artist">{r.artist}</span>
+              {results.map((r) => {
+                const key = `${r.title}|${r.artist}`
+                const alreadyAdded = votedKeys.has(key)
+                return (
+                  <div key={r.id} className="search-result">
+                    {r.cover && (
+                      <img src={r.cover.small} alt="" className="result-cover" />
+                    )}
+                    <div className="result-info">
+                      <span className="result-title">{r.title}</span>
+                      <span className="result-artist">{r.artist}</span>
+                    </div>
+                    <span className="result-year">{r.year}</span>
+                    {r.length > 0 && (
+                      <span className="result-duration">{formatTime(r.length / 1000)}</span>
+                    )}
+                    <button
+                      type="button"
+                      className="add-btn"
+                      onClick={() => handleAddSong(r)}
+                      disabled={alreadyAdded}
+                      aria-label={`Agregar ${r.title}`}
+                    >
+                      {alreadyAdded ? '✓' : '+'}
+                    </button>
                   </div>
-                  <span className="result-year">{r.year}</span>
-                  {r.length > 0 && (
-                    <span className="result-duration">{formatTime(r.length / 1000)}</span>
-                  )}
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {error && <p className="vote-error">{error}</p>}
+
+        {topSongs.length > 0 && (
+          <div className="search-top-list">
+            <p className="search-top-title">Top votadas</p>
+            {topSongs.map((song, i) => {
+              const key = `${song.title}|${song.artist}`
+              const alreadyVoted = votedKeys.has(key)
+              return (
+                <div key={song.id} className="search-top-item">
+                  <span className="search-top-rank">{i + 1}</span>
+                  <img
+                    src={song.coverUrl || '/placeholder-cover.png'}
+                    alt=""
+                    className="search-top-cover"
+                  />
+                  <div className="search-top-info">
+                    <span className="search-top-song">{song.title}</span>
+                    <span className="search-top-artist">{song.artist}</span>
+                  </div>
                   <button
                     type="button"
-                    className="vote-btn vote-btn--compact"
-                    onClick={() => handleVoteResult(r)}
-                    aria-label={`Votar por ${r.title}`}
+                    className={`top-vote-btn${alreadyVoted ? ' top-vote-btn--active' : ''}`}
+                    onClick={() => handleAddSong({ title: song.title, artist: song.artist, cover: { small: song.coverUrl, large: song.coverUrl } })}
+                    disabled={alreadyVoted}
+                    aria-label={`Votar por ${song.title}`}
                   >
-                    <span className="vote-btn-icon">♥</span>
-                    <span className="vote-btn-count">{getVoteCount(r.title, r.artist)}</span>
+                    <span className="top-vote-count">{song.vote_count}</span>
+                    <span className="top-vote-heart">{alreadyVoted ? '♥' : '♡'}</span>
                   </button>
                 </div>
-              ))}
-            </div>
-
-            {topSongs.length > 0 && (
-              <div className="search-top-list">
-                <p className="search-top-title">Top votadas</p>
-                {topSongs.map((song, i) => (
-                  <div key={song.id} className="search-top-item">
-                    <span className="search-top-rank">{i + 1}</span>
-                    <img
-                      src={song.coverUrl}
-                      alt=""
-                      className="search-top-cover"
-                    />
-                    <div className="search-top-info">
-                      <span className="search-top-song">{song.title}</span>
-                      <span className="search-top-artist">{song.artist}</span>
-                    </div>
-                    <span className="search-top-votes">{song.vote_count} ♥</span>
-                  </div>
-                ))}
-              </div>
-            )}
+              )
+            })}
           </div>
         )}
       </div>

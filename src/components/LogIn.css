@@ -1,0 +1,243 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;500;600;700&display=swap');
+
+/* ============================================
+   MIAMI VICE — Design Tokens
+   ============================================ */
+.login-page {
+  --vice-bg-deep: #0a0a1a;
+  --vice-bg-mid: #1a0a2e;
+  --vice-cyan: #00f5ff;
+  --vice-pink: #ff2d95;
+  --vice-purple: #9d4edd;
+  --vice-orange: #ff6b35;
+  --vice-text: #e8e0f0;
+  --vice-text-muted: #a090b8;
+  --vice-error: #ff4757;
+  --vice-glow-cyan: 0 0 20px rgba(0, 245, 255, 0.4);
+  --vice-glow-pink: 0 0 20px rgba(255, 45, 149, 0.4);
+  --font-vice-display: 'Orbitron', 'Segoe UI', sans-serif;
+  --font-vice-body: 'Rajdhani', 'Segoe UI', sans-serif;
+}
+
+/* ============================================
+   PANTALLA COMPLETA
+   ============================================ */
+.login-page {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: var(--font-vice-body);
+  font-size: 1.05rem;
+  font-weight: 500;
+  background: linear-gradient(
+    135deg,
+    var(--vice-bg-deep) 0%,
+    var(--vice-bg-mid) 40%,
+    #2d1b4e 70%,
+    var(--vice-bg-deep) 100%
+  );
+  position: relative;
+  overflow: hidden;
+}
+
+.login-page::before {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40%;
+  background: linear-gradient(
+    to top,
+    rgba(255, 107, 53, 0.15) 0%,
+    rgba(255, 45, 149, 0.08) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+.login-page::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(0, 245, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 245, 255, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+/* Scanlines retro */
+.login-page .login-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.08) 2px,
+    rgba(0, 0, 0, 0.08) 4px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ============================================
+   TARJETA DEL FORMULARIO
+   ============================================ */
+.login-form {
+  position: relative;
+  z-index: 1;
+  background: rgba(26, 10, 46, 0.85);
+  backdrop-filter: blur(12px);
+  padding: 2.5rem 2.5rem 2rem;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 245, 255, 0.3);
+  box-shadow:
+    var(--vice-glow-cyan),
+    inset 0 0 30px rgba(157, 78, 221, 0.1);
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 0.5rem;
+}
+
+.login-eyebrow {
+  margin: 0 0 0.35rem;
+  font-family: var(--font-vice-display);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.45em;
+  text-transform: uppercase;
+  color: var(--vice-pink);
+  text-shadow: var(--vice-glow-pink);
+}
+
+.login-form h2 {
+  margin: 0;
+  font-family: var(--font-vice-display);
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  background: linear-gradient(90deg, var(--vice-cyan), #fff, var(--vice-pink));
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 0 12px rgba(0, 245, 255, 0.45));
+  animation: vice-glow 3s ease-in-out infinite alternate;
+}
+
+.login-tagline {
+  margin: 0.6rem 0 0;
+  font-family: var(--font-vice-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--vice-text-muted);
+}
+
+@keyframes vice-glow {
+  from {
+    filter: drop-shadow(0 0 8px rgba(0, 245, 255, 0.35));
+  }
+  to {
+    filter: drop-shadow(0 0 18px rgba(255, 45, 149, 0.5));
+  }
+}
+
+/* ============================================
+   INPUTS
+   ============================================ */
+.login-form input {
+  padding: 0.85rem 1rem;
+  background: rgba(10, 10, 26, 0.8);
+  border: 1px solid rgba(157, 78, 221, 0.5);
+  border-radius: 2px;
+  font-family: var(--font-vice-body);
+  font-size: 1.1rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--vice-text);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.login-form input::placeholder {
+  font-family: var(--font-vice-body);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 0.85rem;
+  color: var(--vice-text-muted);
+}
+
+.login-form input:focus {
+  outline: none;
+  border-color: var(--vice-cyan);
+  box-shadow: 0 0 0 2px rgba(0, 245, 255, 0.25);
+}
+
+/* ============================================
+   ERROR
+   ============================================ */
+.login-form .error-message {
+  font-family: var(--font-vice-body);
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--vice-error);
+  margin: 0;
+  text-align: center;
+  text-shadow: 0 0 8px rgba(255, 71, 87, 0.5);
+}
+
+/* ============================================
+   BOTÓN
+   ============================================ */
+.login-form button {
+  background: linear-gradient(90deg, var(--vice-pink), var(--vice-purple));
+  color: #fff;
+  padding: 0.9rem;
+  border: none;
+  border-radius: 2px;
+  font-family: var(--font-vice-display);
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  margin-top: 0.5rem;
+  box-shadow: var(--vice-glow-pink);
+}
+
+.login-form button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 0 30px rgba(255, 45, 149, 0.6);
+}
+
+.login-form button:disabled {
+  background: linear-gradient(90deg, #555, #444);
+  box-shadow: none;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.login-footer {
+  margin: 0.25rem 0 0;
+  text-align: center;
+  font-family: var(--font-vice-display);
+  font-size: 0.55rem;
+  font-weight: 400;
+  letter-spacing: 0.35em;
+  color: rgba(0, 245, 255, 0.45);
+  text-transform: uppercase;
+}

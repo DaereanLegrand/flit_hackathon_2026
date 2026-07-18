@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../supabase'
+import MiniMap from './MiniMap'
 import {
   voteSong,
   songKey,
@@ -30,6 +31,7 @@ export default function ScanPage() {
   const [searching, setSearching] = useState(false)
   const [votesMap, setVotesMap] = useState({})
   const [topSongs, setTopSongs] = useState([])
+  const [location, setLocation] = useState(null)
   const deviceId = useRef(getDeviceId())
   const intervalRef = useRef(null)
   const searchTimer = useRef(null)
@@ -60,6 +62,17 @@ export default function ScanPage() {
       return () => clearInterval(intervalRef.current)
     }
   }, [phase, fetchRoom])
+
+  useEffect(() => {
+    if (phase === 'room') {
+      supabase.functions.invoke('get-location', {
+        method: 'POST',
+        body: { hash },
+      }).then(({ data }) => {
+        if (data?.lat && data?.lng) setLocation(data)
+      }).catch(() => {})
+    }
+  }, [phase, hash])
 
   useEffect(() => {
     if (phase === 'joining') {
@@ -165,6 +178,20 @@ export default function ScanPage() {
             ))}
           </div>
         </div>
+
+        {location && (
+            <div className="location-card">
+              <MiniMap lat={location.lat} lng={location.lng} />
+              <a
+                href={`https://www.google.com/maps?q=${location.lat},${location.lng}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="share-btn"
+              >
+                Como llegar
+              </a>
+            </div>
+          )}
 
         {!showSearch && (
           <button className="add-song-btn" onClick={() => setShowSearch(true)}>Agregar cancion</button>

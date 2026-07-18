@@ -1,12 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import QRCode from 'qrcode'
 import { supabase, supabaseUrl } from '../supabase'
+import LocationPicker from './LocationPicker'
+import MiniMap from './MiniMap'
 
 export default function HostPage() {
   const [qrDataUrl, setQrDataUrl] = useState(null)
   const [hash, setHash] = useState(null)
   const [loading, setLoading] = useState(false)
   const [participants, setParticipants] = useState([])
+  const [showLocationPicker, setShowLocationPicker] = useState(false)
+  const [location, setLocation] = useState(null)
   const intervalRef = useRef(null)
 
   const getRoom = useCallback(async (h) => {
@@ -66,7 +70,35 @@ export default function HostPage() {
               ))}
             </div>
           </div>
+          {!location && (
+            <button
+              className="add-song-btn"
+              onClick={() => setShowLocationPicker(true)}
+            >
+              QUEDAR<br />LUGAR
+            </button>
+          )}
+
+          {location && (
+            <div className="location-card">
+              <MiniMap lat={location.lat} lng={location.lng} />
+              <a
+                href={`https://www.google.com/maps?q=${location.lat},${location.lng}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="share-btn"
+              >
+                Compartir ubicacion
+              </a>
+            </div>
+          )}
         </>
+      )}
+      {showLocationPicker && hash && (
+        <LocationPicker
+          hash={hash}
+          onClose={() => { setShowLocationPicker(false); setHasLocation(true) }}
+        />
       )}
     </div>
   )

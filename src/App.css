@@ -17,15 +17,15 @@
 
 .disco-title {
   font-family: 'Playfair Display', serif;
-  font-size: 120px;
+  font-size: clamp(60px, 15vw, 120px);
   font-weight: 700;
   font-style: italic;
   color: var(--pink);
-  letter-spacing: -4px;
+  letter-spacing: -0.03em;
   line-height: 1;
   cursor: pointer;
   user-select: none;
-  text-shadow: 0 0 40px var(--pink), 0 0 80px var(--pink), 0 0 120px var(--pink);
+  text-shadow: 0 0 0.35em var(--pink), 0 0 0.7em var(--pink), 0 0 1em var(--pink);
   animation: disco-glow 3s ease-in-out infinite alternate;
   transition: transform 0.15s;
 }
@@ -180,15 +180,15 @@
 
 @keyframes disco-glow {
   0% {
-    text-shadow: 0 0 40px var(--pink), 0 0 80px var(--pink);
+    text-shadow: 0 0 0.35em var(--pink), 0 0 0.7em var(--pink);
     color: var(--pink);
   }
   50% {
-    text-shadow: 0 0 40px var(--cyan), 0 0 80px var(--cyan), 0 0 120px var(--cyan);
+    text-shadow: 0 0 0.35em var(--cyan), 0 0 0.7em var(--cyan), 0 0 1em var(--cyan);
     color: var(--cyan);
   }
   100% {
-    text-shadow: 0 0 40px var(--purple), 0 0 80px var(--purple);
+    text-shadow: 0 0 0.35em var(--purple), 0 0 0.7em var(--purple);
     color: var(--purple);
   }
 }
@@ -407,6 +407,11 @@
   font-variant-numeric: tabular-nums;
 }
 
+@keyframes bpm-pulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.03); }
+}
+
 @keyframes soft-glow {
   0% {
     box-shadow: 0 0 30px rgba(255, 45, 120, 0.5), 0 0 60px rgba(255, 45, 120, 0.25), 0 0 90px rgba(255, 45, 120, 0.1);
@@ -426,18 +431,19 @@
   background: #fff;
   border: none;
   color: #000;
-  font-size: 15px;
-  font-weight: 600;
-  font-family: 'Inter', sans-serif;
+  font-size: 17px;
+  font-weight: 500;
+  font-family: 'Playfair Display', serif;
+  font-style: italic;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
+  letter-spacing: 1px;
   line-height: 1.3;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   user-select: none;
-  animation: soft-glow 4s ease-in-out infinite alternate;
+  animation: soft-glow 4s ease-in-out infinite alternate, bpm-pulse 3s ease-in-out infinite;
   transition: transform 0.3s ease;
   flex-shrink: 0;
 }
@@ -448,6 +454,110 @@
 
 .add-song-btn:active {
   transform: scale(0.97);
+}
+
+.add-song-btn--set {
+  border: 2px solid var(--cyan);
+  color: var(--cyan);
+  background: transparent;
+}
+
+.location-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: var(--black);
+  display: flex;
+  flex-direction: column;
+}
+
+.location-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  flex-shrink: 0;
+}
+
+.location-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 4px;
+}
+
+.location-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.location-map {
+  flex: 1;
+  min-height: 0;
+}
+
+.location-footer {
+  padding: 16px 20px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: center;
+}
+
+.location-save {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #000;
+  background: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 40px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  transition: opacity 0.2s;
+}
+
+.location-save:disabled {
+  opacity: 0.5;
+}
+
+.location-link {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--cyan);
+  text-decoration: none;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  padding: 10px 24px;
+  border: 1px solid var(--cyan);
+  border-radius: 20px;
+  transition: background 0.2s;
+}
+
+.location-link:hover {
+  background: rgba(0, 240, 255, 0.1);
+}
+
+.location-hint {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 3px;
+  animation: pulse-text 1s ease-in-out infinite;
 }
 
 @keyframes fadeIn {
@@ -605,4 +715,40 @@
   color: var(--text);
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+.mini-map {
+  width: 100%;
+  height: 180px;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.location-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  max-width: 320px;
+}
+
+.share-btn {
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+  color: #000;
+  background: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 12px 32px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  text-decoration: none;
+  transition: opacity 0.2s;
+}
+
+.share-btn:hover {
+  opacity: 0.85;
 }

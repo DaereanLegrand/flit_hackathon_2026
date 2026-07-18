@@ -452,7 +452,6 @@ export default {
     if (req.method !== "POST") return json({ error: "Método no permitido" }, 405)
     try {
       const body = await req.json()
-      _logs = []
       log("[handler] ====== INCOMING REQUEST ======")
       log("[handler] action: " + (body?.action || ""))
       log("[handler] full body: " + JSON.stringify(body))

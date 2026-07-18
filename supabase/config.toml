@@ -383,9 +383,12 @@ inspector_port = 8083
 deno_version = 2
 
 [edge_runtime.secrets]
-GROQ_API_KEY = "env(GROQ_API_KEY)"
 LASTFM_API_KEY = "env(LASTFM_API_KEY)"
-GROQ_MODEL = "env(GROQ_MODEL)"
+LLM_API_KEY = "env(LLM_API_KEY)"
+LLM_MODEL = "env(LLM_MODEL)"
+MCP_SERVER_URLS = "env(MCP_SERVER_URLS)"
+# Telegram bot — para notificaciones y chat context
+TELEGRAM_BOT_TOKEN = "env(TELEGRAM_BOT_TOKEN)"
 
 [analytics]
 enabled = true

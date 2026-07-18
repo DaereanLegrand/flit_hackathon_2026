@@ -84,6 +84,17 @@ export default function ScanPage() {
     setCustomAnswer('')
   }
 
+  async function handleGoToRoom() {
+    if (agentResult?.type === 'recommendation') {
+      const toAdd = [agentResult.song, ...(agentResult.playlist || [])]
+      for (const track of toAdd) {
+        const coverUrl = track.image_url || null
+        await addSong(track.title, track.artist, coverUrl)
+      }
+    }
+    setPhase('room')
+  }
+
   async function handleJoin(e) {
     e.preventDefault()
     if (!nickname.trim()) return
@@ -177,7 +188,7 @@ export default function ScanPage() {
                     </a>
                   ))}
                 </div>
-                <button className="mood-btn" onClick={() => setPhase('room')}>Ir a la sala</button>
+                <button className="mood-btn" onClick={handleGoToRoom}>Ir a la sala</button>
               </div>
             )}
 

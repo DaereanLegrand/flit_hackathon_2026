@@ -113,6 +113,104 @@ Actualizar Supabase despliega el backend, pero no publica por sí mismo el front
 - Se permite una sesión por dispositivo y día UTC. El `device_id` limita accidentes, pero no sustituye autenticación ni un rate limiter de infraestructura frente a abuso deliberado.
 - La función no reproduce música ni usa OAuth de Spotify/YouTube Music; solo crea enlaces de búsqueda.
 
+## MCP Client — Consumo de servidores externos
+
+El agente actúa como un **cliente MCP** (Model Context Protocol) para consumir servidores externos
+que proveen contexto del usuario. La conexión se realiza al inicio de cada sesión.
+
+### Servidores MCP disponibles
+
+| Servidor | Propósito | Herramientas expuestas |
+|---|---|---|
+| `flit-telegram-mcp` (se ejecuta junto al bot de Telegram) | Chat reciente, perfil, notificaciones | `get_chat_context`, `get_chat_summary_today`, `get_user_info`, `get_user_notifications`, `send_notification` |
+| Futuros: email, calendario, notificaciones push | Pendiente | Pendiente |
+
+### Configuración
+
+```bash
+# En supabase/.env.local
+MCP_SERVER_URLS=flit-telegram-mcp=http://localhost:3100
+```
+
+El formato de `MCP_SERVER_URLS` es: `nombre1=url1,nombre2=url2`
+
+Las herramientas de cada servidor se fusionan con las herramientas locales de Groq.
+El LLM decide si usar una herramienta local (`ask_question`, `search_music`, `choose_recommendation`)
+o una herramienta MCP (prefijada con el nombre del servidor, ej. `flit-telegram-mcp__get_chat_context`).
+
+### Hardcoded data
+
+Para evitar depender de OAuth y API keys de terceros, los datos de usuario se proporcionan
+mediante datos hardcodeados en `supabase/functions/daily-dj-agent/hardcoded_data.ts`.
+Allí hay perfiles de ejemplo para distintos dispositivos con chat, notificaciones, calendario,
+correos e historial de escucha. Cuando se conecten servicios reales (Spotify, Google Calendar,
+Gmail), basta con reemplazar las funciones en `hardcoded_data.ts` por llamadas API reales.
+
+### Flujo de datos
+
+1. `handleStart` recibe `device_id`
+2. Se conecta a los servidores MCP configurados en `MCP_SERVER_URLS`
+3. Se obtiene el contexto hardcodeado para el `device_id`
+4. El contexto (chat, notis, calendario, correos, historial) se inyecta en el prompt de Groq
+5. Groq usa esta información para personalizar preguntas y recomendación
+6. Groq puede llamar herramientas MCP durante la conversación si necesita más contexto
+
+## Telegram Bot (servicio separado)
+
+El bot de Telegram (`telegram-bot/`) opera como un **servicio independiente** que:
+
+- Responde a comandos del usuario (`/start`, `/vibe`, `/tastes`)
+- Almacena mensajes en `telegram_chat_context` vía Supabase REST
+- Expone un servidor MCP en `http://localhost:3100` para que el `daily-dj-agent` consuma
+- Usa datos hardcodeados en `getHardcodedChatContext`, `getHardcodedNotifications`, etc.
+
+### Requisitos
+
+```bash
+cd telegram-bot
+cp .env.example .env
+# Editar .env con TELEGRAM_BOT_TOKEN y SUPABASE_ANON_KEY
+npm install
+npm run dev
+```
+
+### Comandos del bot
+
+| Comando | Acción |
+|---|---|
+| `/start` | Bienvenida + teclado inline |
+| `/vibe` | Inicia cuestionario de estado de ánimo → recomendación |
+| `/tastes` | Muestra gustos musicales hardcodeados |
+| Cualquier mensaje | Conversación básica + almacenamiento en DB |
+
+### Conexión con el daily-dj-agent
+
+El bot de Telegram se conecta con el agente Edge Function de dos formas:
+
+1. **BD compartida**: El bot escribe en `telegram_chat_context` y `user_notifications`
+2. **MCP Server**: El bot expone `get_chat_context`, `get_user_info`, etc. como herramientas MCP
+   que el `daily-dj-agent` consume cuando se lo solicita Groq
+
+## Tablas de datos de usuario
+
+### `user_profiles`
+Perfil de usuario vinculando `device_id` con datos de Telegram y zona horaria.
+
+### `user_listening_history`
+Historial de artistas, tracks y géneros que le gustan al usuario.
+`source` indica si es hardcodeado, de Last.fm o de Spotify.
+
+### `user_interactions`
+Cada "me gusta" / "no me gusta" que el usuario da a una recomendación.
+Se usa para construir el perfil de gusto a largo plazo.
+
+### `telegram_chat_context`
+Mensajes recientes del chat de Telegram para dar contexto al agente.
+
+### `user_notifications`
+Notificaciones de diversas fuentes (calendario, Telegram, sistema) que el agente
+puede usar para entender el estado actual del usuario.
+
 ## Modelo de Groq
 
 El valor predeterminado es `qwen/qwen3.6-27b`: fue probado con Responses API y devolvió correctamente una llamada local a `ask_question`. La conexión básica con `llama-3.3-70b-versatile` funcionó, pero su llamada de herramienta falló durante la validación y Groq anunció su retiro para el **16 de agosto de 2026**. `GROQ_MODEL` permite cambiar de modelo sin modificar la base de datos.

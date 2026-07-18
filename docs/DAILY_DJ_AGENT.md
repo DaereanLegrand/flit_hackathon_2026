@@ -1,31 +1,33 @@
 # Vibe Daily DJ Agent
 
-Esta implementación agrega un agente musical diario completo sin mezclarlo con el matching grupal de salas. El usuario responde un test adaptativo de dos a cuatro preguntas; Groq decide la siguiente acción y Last.fm aporta canciones reales. El resultado es una canción principal, una playlist corta y enlaces para buscarla en Spotify o YouTube Music.
+Esta implementación conecta un agente musical diario al cuestionario que ya existía después de unirse a una sala. El usuario comienza con el slider **¿Cómo te sientes hoy?** y Groq genera las preguntas siguientes; Last.fm aporta canciones reales. El resultado es una canción principal, una playlist corta y enlaces para buscarla en Spotify o YouTube Music.
 
 ## Qué se comparte por Git
 
 - `supabase/migrations/20260718191000_create_daily_music_agent.sql`: crea tres tablas privadas, índices, restricciones, RLS y permisos exclusivos para `service_role`.
 - `supabase/functions/daily-dj-agent/`: función Edge que valida la sesión, conversa con Groq, consulta Last.fm y persiste el resultado.
 - `supabase/config.toml`: registra la función y carga los secretos desde el entorno del servidor.
-- `src/components/DailyVibePage.jsx`: interfaz disponible en `/daily-vibe`.
+- `src/components/QuestionPlaceholder.jsx`: reemplaza el placeholder de la segunda pregunta por el agente real.
+- `src/components/ScanPage.jsx`: entrega al agente el valor seleccionado en `MoodSlider`.
 - `supabase/.env.example`: nombres de variables, nunca claves reales.
 
 No se comparte `supabase/.env.local`; está ignorado por Git.
 
 ## Flujo interno
 
-1. `start` crea una sesión diaria y un token secreto.
-2. Groq usa `ask_question` para formular preguntas breves y adaptativas.
-3. Cada `answer` se valida y se guarda antes de pedir la siguiente decisión al modelo.
-4. Cuando hay señales suficientes, Groq usa `search_music` con tags y semillas. La función consulta `tag.getTopTracks`, `artist.getTopTracks` y, cuando corresponde, `track.getSimilar` de Last.fm.
-5. Las canciones se normalizan, deduplican y guardan como candidatos reales.
-6. Groq usa `choose_recommendation`, pero solo puede escoger IDs que Last.fm devolvió. Así se evita que el LLM invente títulos.
-7. La canción y playlist se guardan y se devuelven al frontend.
+1. El participante responde el `MoodSlider` existente al entrar a la sala.
+2. `start` crea una sesión diaria, guarda ese estado de ánimo inicial y genera un token secreto.
+3. Groq usa `ask_question` para formular las preguntas breves siguientes.
+4. Cada `answer` se valida y se guarda antes de pedir la siguiente decisión al modelo.
+5. Cuando hay señales suficientes, Groq usa `search_music` con tags y semillas. La función consulta `tag.getTopTracks`, `artist.getTopTracks` y, cuando corresponde, `track.getSimilar` de Last.fm.
+6. Las canciones se normalizan, deduplican y guardan como candidatos reales.
+7. Groq usa `choose_recommendation`, pero solo puede escoger IDs que Last.fm devolvió. Así se evita que el LLM invente títulos.
+8. La canción y playlist se muestran en el mismo flujo y luego el participante continúa hacia la sala.
 
 El endpoint acepta estas acciones mediante `POST /functions/v1/daily-dj-agent`:
 
 ```json
-{ "action": "start", "device_id": "uuid-o-identificador-del-dispositivo" }
+{ "action": "start", "device_id": "uuid-o-identificador-del-dispositivo", "initial_mood": 7 }
 ```
 
 ```json
@@ -98,13 +100,9 @@ curl 'https://flit-api.qallariy.lat/functions/v1/daily-dj-agent' \
 
 La respuesta esperada tiene `type: "question"`, `session_id`, `access_token`, la pregunta y sus opciones. El token debe mantenerse privado y enviarse en los pasos siguientes.
 
-La interfaz web se prueba en:
+La interfaz se prueba creando una sala, abriendo su QR como participante y completando el slider **¿Cómo te sientes hoy?**. La siguiente pantalla ya no debe decir “próximamente”: debe mostrar una pregunta generada por el agente.
 
-```text
-https://URL_DEL_FRONTEND/daily-vibe
-```
-
-Actualizar Supabase despliega el backend, pero no publica por sí mismo el frontend. El servicio que aloja React también debe ejecutar su proceso habitual de build/despliegue después del `git pull` para que aparezca el botón **MI VIBE DE HOY**.
+Actualizar Supabase despliega el backend, pero no publica por sí mismo el frontend. El servicio que aloja React también debe ejecutar su proceso habitual de build/despliegue después del `git pull` para que el cuestionario existente use el agente.
 
 ## Configuración y seguridad
 

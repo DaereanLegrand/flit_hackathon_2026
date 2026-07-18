@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { Link } from 'react-router-dom'
 import QRCode from 'qrcode'
 import { supabase } from '../supabase'
 import LocationPicker from './LocationPicker'
@@ -122,7 +121,6 @@ export default function HostPage() {
 
   return (
     <div className="disco-home">
-      <Link className="daily-entry" to="/daily-vibe">MI VIBE DE HOY</Link>
       {!qrDataUrl && (
         <h1 className="disco-title" onClick={handleClick}>EMPEZAR</h1>
       )}

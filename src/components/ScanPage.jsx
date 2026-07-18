@@ -164,7 +164,10 @@ export default function ScanPage() {
     }
     if (quizStep === 2) {
       return (
-        <QuestionPlaceholder onComplete={() => setPhase('room')} />
+        <QuestionPlaceholder
+          initialMood={_moodValue}
+          onComplete={() => setPhase('room')}
+        />
       )
     }
   }

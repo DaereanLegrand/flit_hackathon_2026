@@ -295,9 +295,18 @@ async function runAgent(db: any, session: SessionRow, includeToken = false): Pro
 
 async function handleStart(db: any, body: JsonObject): Promise<JsonObject> {
   const deviceId = requiredText(body.device_id, "device_id", 8, 128)
+  const initialMood = Number(body.initial_mood)
+  const initialAnswers: QuestionAnswer[] = Number.isInteger(initialMood) && initialMood >= 0 && initialMood <= 10
+    ? [{
+      key: "mood",
+      question: "¿Cómo te sientes hoy?",
+      options: [],
+      answer: `${initialMood}/10 de bienestar emocional`,
+    }]
+    : []
   const { data, error } = await db
     .from("daily_music_sessions")
-    .insert({ device_id: deviceId })
+    .insert({ device_id: deviceId, answers: initialAnswers })
     .select("id, access_token, device_id, status, answers")
     .single()
   if (error?.code === "23505") {

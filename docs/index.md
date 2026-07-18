@@ -1,6 +1,6 @@
 # FLIT · disco — Documentación completa
 
-Aplicación web de sala de música colaborativa con votación de canciones, códigos QR y ubicación compartida. Creada para el hackathon **FLIT 2026**.
+Aplicación web de sala de música colaborativa con **quiz de estado de ánimo** como experiencia principal, más votación de canciones, códigos QR y ubicación compartida como funciones secundarias. Creada para el hackathon **FLIT 2026**.
 
 ---
 
@@ -12,27 +12,34 @@ Aplicación web de sala de música colaborativa con votación de canciones, cód
 4. [Arquitectura de la aplicación](#4-arquitectura-de-la-aplicación)
 5. [Autores](#5-autores)
 6. [Flujo de uso](#6-flujo-de-uso)
-7. [Supabase: configuración local + Cloudflare Tunnel](#7-supabase-configuración-local--cloudflare-tunnel)
-8. [Base de datos: esquema completo](#8-base-de-datos-esquema-completo)
-9. [Edge Functions](#9-edge-functions)
-10. [Frontend: componentes y rutas](#10-frontend-componentes-y-rutas)
-11. [Cómo ejecutar el proyecto](#11-cómo-ejecutar-el-proyecto)
-12. [Incidencias conocidas](#12-incidencias-conocidas)
-13. [Guía de migraciones](#13-guía-de-migraciones)
-14. [Código muerto / no utilizado](#14-código-muerto--no-utilizado)
+7. [Mood Quiz: componente principal](#7-mood-quiz-componente-principal)
+8. [Supabase: configuración local + Cloudflare Tunnel](#8-supabase-configuración-local--cloudflare-tunnel)
+9. [Base de datos: esquema completo](#9-base-de-datos-esquema-completo)
+10. [Edge Functions](#10-edge-functions)
+11. [Frontend: componentes y rutas](#11-frontend-componentes-y-rutas)
+12. [Cómo ejecutar el proyecto](#12-cómo-ejecutar-el-proyecto)
+13. [Incidencias conocidas](#13-incidencias-conocidas)
+14. [Guía de migraciones](#14-guía-de-migraciones)
+15. [Código muerto / no utilizado](#15-código-muerto--no-utilizado)
 
 ---
 
 ## 1. Resumen del proyecto
 
-FLIT · disco permite que un anfitrión cree una **sala** generando un código QR. Los invitados escanean el QR, ingresan su nickname y se unen a la sala. Una vez dentro, todos pueden **buscar canciones** (a través de MusicBrainz) y **votar** por ellas. El anfitrión puede además fijar una **ubicación** en un mapa para que los invitados sepan dónde dirigirse.
+FLIT · disco ofrece dos experiencias:
 
-Existen dos subsistemas de votación:
+### Experiencia principal: Mood Quiz
+Al escanear un código QR (o al unirse a una sala), el usuario es recibido por un **quiz de 4 preguntas** que evalúa su estado de ánimo. La primera pregunta es un slider visual:
 
-| Subsistema | Persistencia | Alcance | Usado en |
-|---|---|---|---|
-| `useRoomSongs` | Supabase `room_votes` + Realtime | Compartido por todos los usuarios de una sala | `HostPage`, `ScanPage` (rutas principales) |
-| `useSongVotes` / `songVotes.js` | `localStorage` del navegador | Solo el usuario local | `SongsPage` (ruta oculta `/songs`) |
+> **"¿Cómo te sientes hoy?"**
+
+El usuario arrastra un control deslizante de 0 a 10, con emojis animados que reflejan su estado (😢 → 😄). El fondo cambia gradualmente de color (azul triste → violeta → rosado → naranja → dorado increíble) creando una experiencia "vibe". Las siguientes 3 preguntas serán generadas dinámicamente por una LLM para obtener más contexto emocional, y luego se recomendarán canciones que coincidan con el estado de ánimo (futuro).
+
+### Funciones secundarias
+- **Salas colaborativas**: Un anfitrión genera un código QR, los invitados escanean y se unen a una sala.
+- **Votación de canciones**: Todos pueden buscar canciones (MusicBrainz) y votar por ellas en tiempo real via Realtime.
+- **Ubicación compartida**: El anfitrión puede fijar una ubicación en un mapa para que los invitados sepan dónde dirigirse.
+- **Ranking local**: Página `/songs` con 7 canciones precargadas y votación en localStorage (oculta en la UI).
 
 ---
 
@@ -96,13 +103,15 @@ Existen dos subsistemas de votación:
 ├── src/
 │   ├── main.jsx                    # Entry point (BrowserRouter + ErrorBoundary)
 │   ├── App.jsx                     # Rutas de la aplicación
-│   ├── App.css                     # Estilos principales (849 líneas)
+│   ├── App.css                     # Estilos principales (1024 líneas)
 │   ├── index.css                   # Variables CSS globales + reset
 │   ├── supabase.js                 # Cliente Supabase
 │   │
 │   └── components/
 │       ├── HostPage.jsx            # Página del anfitrión (ruta /)
 │       ├── ScanPage.jsx            # Página del invitado (ruta /qr/:hash)
+│       ├── MoodSlider.jsx          # Slider de estado de ánimo (paso 1 del quiz)
+│       ├── QuestionPlaceholder.jsx # Placeholder para pregunta 2 del quiz
 │       ├── LocationPicker.jsx      # Selector de ubicación en mapa (pantalla completa)
 │       ├── MiniMap.jsx             # Mapa miniatura no interactivo
 │       ├── ErrorBoundary.jsx       # Capturador de errores React
@@ -193,9 +202,9 @@ Existen dos subsistemas de votación:
 │    │   Client        │                                │    │
 │    └─────────────────┘                                │    │
 └───────────────────────────────────────────────────────┘    │
-                                                             │
-        ┌────────────────────────────────────────────────────┘
-        ▼
+                                                              │
+         ┌────────────────────────────────────────────────────┘
+         ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  Cloudflare Tunnel (flit-api.qallariy.lat → localhost:54321)│
 │  ┌──────────────────────────────────────────────────────────┐│
@@ -224,14 +233,16 @@ La aplicación React se comunica con Supabase (local) a través de un **Cloudfla
 
 | Autor | Email | Commits | Principales contribuciones |
 |---|---|---|---|
-| **DaereanLegrand** | frankrogerstg@gmail.com | 7 | Estructura inicial, QR, salas, ubicación, mapa, búsqueda de canciones, persistencia de nickname |
+| **DaereanLegrand** | frankrogerstg@gmail.com | 9 | Estructura inicial, QR, salas, ubicación, mapa, búsqueda de canciones, mood quiz, slider |
 | **rcayroc02** | roberto.cayro@ucsp.edu.pe | 3 | Conexión básica con MusicBrainz, lista dinámica, LogIn básico |
 
-Commits totales: **10** (todos del 2026-07-18).
+Commits totales: **12** (todos del 2026-07-18).
 
 ### Historial de commits
 
 ```
+f13af31  DaereanLegrand  mood quiz: custom slider with dynamic background glow, spanish text, mobile-friendly
+fe026c9  DaereanLegrand  docs: documentacion completa + migraciones para 6 tablas faltantes
 e0828f5  DaereanLegrand  location picker with tiles.qallariy.lat + MiniMap
 2980ec3  rcayroc02       lista dinamica
 bca387b  DaereanLegrand  room: search songs via MusicBrainz + soft glow button
@@ -261,10 +272,13 @@ c2993cb  DaereanLegrand  Initial commit again
 ### Invitado (`/qr/:hash`)
 1. Escanea el código QR → llega al formulario de nickname
 2. Ingresa su nombre → llama `join-room` con `qr_hash`, `device_id`, `nickname`
-3. Por 1.5 segundos ve un check animado, luego entra a la sala
-4. Ve la lista de participantes, el mapa de ubicación (si el anfitrión lo fijó)
-5. Puede buscar canciones y votar por ellas
-6. Las actualizaciones de votos llegan en tiempo real via Realtime
+3. Por 1.5 segundos ve un check animado, luego entra al **mood quiz**
+4. **Paso 1**: Slider "¿Cómo te sientes hoy?" (0-10, colores dinámicos, emoji animado)
+5. **Paso 2**: Placeholder para pregunta generada por LLM (futuro)
+6. Luego de completar el quiz, entra a la sala
+7. Ve la lista de participantes, el mapa de ubicación (si el anfitrión lo fijó)
+8. Puede buscar canciones y votar por ellas
+9. Las actualizaciones de votos llegan en tiempo real via Realtime
 
 ### Página de canciones (`/songs`)
 - Accesible solo navegando manualmente a `/songs`
@@ -272,7 +286,99 @@ c2993cb  DaereanLegrand  Initial commit again
 
 ---
 
-## 7. Supabase: configuración local + Cloudflare Tunnel
+## 7. Mood Quiz: componente principal
+
+### MoodSlider (`src/components/MoodSlider.jsx`)
+
+Componente de pantalla completa que presenta la pregunta principal del quiz. Es la primera interacción del usuario después de unirse a una sala.
+
+#### Comportamiento
+
+- **Slider**: Control deslizante de 0 a 10 implementado con un `div` personalizado y eventos `pointer` (no usa `<input type="range">` nativo para evitar problemas de límites en mobile).
+- **Colores dinámicos**: El fondo (`mood-bg`) cambia gradualmente a través de un espectro de 11 colores:
+  - 0-1: Azul (`#1565C0`) — tristeza
+  - 2-3: Azul/violeta → Púrpura
+  - 4-5: Magenta → Rosado (`#ff2d78`)
+  - 6-7: Rosado → Naranja
+  - 8-9: Naranja → Amarillo
+  - 10: Dorado (`#FFD700`) — increíble
+- **Transición**: El `background-color` cambia con `transition: 0.8s ease` (los gradientes radiales no son interpolables entre navegadores, por lo que se usa `background-color` + un pseudo-elemento con vignette fijo).
+- **Emoji**: Aparece debajo del slider, animado con efecto `pop` (escala) cada vez que cambia el valor.
+- **Etiquetas**: 6 labels debajo del slider: "terrible", "mal", "regular", "bien", "muy bien", "increíble". La activa se ilumina con el color del acento.
+- **Pista**: Barra blanca semitransparente (`rgba(255,255,255,0.5)`) para alto contraste.
+- **Pulgar**: Círculo de 28px con el color del acento y sombra glow.
+- **Progreso**: 4 puntos indicadores (paso 1 de 4).
+- **Botón**: "Continuar" con estilo outline (texto rosado, borde rosado, fondo transparente, sin bordes redondeados).
+- **Touch**: Altura de 44px en el track para buena experiencia táctil en mobile.
+
+#### Implementación técnica
+
+```jsx
+// Eventos pointer en el track
+onPointerDown → setDragging(true), setFromEvent(clientX)
+onPointerMove → if dragging, setFromEvent(clientX)
+onPointerUp → setDragging(false)
+
+// Cálculo de valor
+setFromEvent(clientX) {
+  const rect = trackRef.current.getBoundingClientRect()
+  const x = clamp(clientX - rect.left, 0, rect.width)
+  const value = round((x / rect.width) * 10)
+  setValue(value)
+}
+```
+
+### QuestionPlaceholder (`src/components/QuestionPlaceholder.jsx`)
+
+Componente placeholder para la segunda pregunta del quiz. Muestra:
+- Título "Pregunta 2"
+- Indicador "(próximamente)"
+- 4 puntos de progreso (paso 2 activo)
+- Botón "Ir a la sala"
+
+Este componente será reemplazado por preguntas generadas dinámicamente por una LLM en una versión futura.
+
+### Integración en ScanPage
+
+El flujo dentro de `ScanPage.jsx` tiene 4 fases (controladas por el estado `phase`):
+
+```
+form → joining (1.5s) → quiz → room
+```
+
+Dentro de `quiz`, hay 2 pasos controlados por `quizStep`:
+
+```
+quizStep 1 → <MoodSlider onComplete={...} />
+quizStep 2 → <QuestionPlaceholder onComplete={...} />
+```
+
+El valor del mood (`0-10`) se almacena en `_moodValue` para uso futuro en recomendaciones.
+
+### CSS
+
+Los estilos del mood quiz ocupan aproximadamente 175 líneas en `src/App.css` (líneas 851-1024). Incluyen:
+
+| Selector | Propósito |
+|---|---|
+| `.mood-slider` | Contenedor full-screen, flexbox centrado |
+| `.mood-bg` | Capa de fondo con `background-color` transicionable |
+| `.mood-bg::after` | Vignette radial fijo (transparente → negro) |
+| `.mood-card` | Tarjeta de contenido (max-width: 460px) |
+| `.mood-heading` | Título en Playfair Display con glow |
+| `.mood-track-area` | Contenedor del slider |
+| `.mood-track` | Track touch target (44px) |
+| `.mood-track-bg` | Barra blanca semitransparente |
+| `.mood-thumb` | Pulgar circular con glow, posicionado con `left: X%` |
+| `.mood-labels-row` | Fila de 6 etiquetas de ánimo |
+| `.mood-label--on` | Etiqueta activa con color del acento |
+| `.mood-current-emoji` | Emoji grande animado con `mood-pop` |
+| `.mood-steps` / `.mood-dot` | Indicadores de progreso |
+| `.mood-btn` | Botón outline (estático, rosado fijo) |
+
+---
+
+## 8. Supabase: configuración local + Cloudflare Tunnel
 
 ### Infraestructura
 
@@ -309,11 +415,11 @@ Las teselas vectoriales se sirven desde `tiles.qallariy.lat`, también presumibl
 
 ---
 
-## 8. Base de datos: esquema completo
+## 9. Base de datos: esquema completo
 
-La base de datos tiene **9 tablas** en total. De ellas, 3 fueron creadas mediante migraciones y 6 fueron creadas manualmente por otros autores y posteriormente migradas a archivos SQL (ver [incidencias conocidas](#124-tablas-fuera-de-migraciones)).
+La base de datos tiene **9 tablas** en total. De ellas, 3 fueron creadas mediante migraciones y 6 fueron creadas manualmente por otros autores y posteriormente migradas a archivos SQL (ver [incidencias conocidas](#13-incidencias-conocidas)).
 
-### 8.1 Tablas base
+### 9.1 Tablas base
 
 #### `qr_codes` — Códigos QR de salas
 
@@ -363,11 +469,11 @@ RLS habilitado. Incluida en `supabase_realtime` para actualizaciones en vivo.
 
 ---
 
-### 8.2 Tablas de recomendación musical
+### 9.2 Tablas de recomendación musical
 
-Estas tablas conforman un **sistema de recomendación de canciones** por sala, probablemente integrable con Last.fm. Almacenan preferencias de participantes, relaciones entre artistas/géneros/canciones, y candidatos sugeridos para reproducción.
+Estas tablas conforman un **sistema de recomendación de canciones** por sala. Almacenan preferencias de participantes, relaciones entre artistas/géneros/canciones, y candidatos sugeridos para reproducción. Creadas para integración futura con el mood quiz.
 
-#### `music_relations` — Relaciones semánticas entre música (Last.fm)
+#### `music_relations` — Relaciones semánticas entre música
 
 ```sql
 create table if not exists music_relations (
@@ -386,7 +492,7 @@ create table if not exists music_relations (
 );
 ```
 
-Almacena relaciones de similitud entre géneros, artistas y canciones obtenidas de Last.fm. Los datos expiran a los 7 días. Sin RLS (solo accesible por service_role o mediante políticas si se agregan).
+Almacena relaciones de similitud entre géneros, artistas y canciones. Sin RLS.
 
 #### `music_preferences` — Preferencias musicales de participantes
 
@@ -407,90 +513,31 @@ create table if not exists music_preferences (
 );
 ```
 
-Cada participante puede tener preferencias de géneros, artistas o canciones, cada una con un peso. Pueden ser asignadas manualmente o importadas de Last.fm. Sin RLS.
+Cada participante puede tener preferencias con peso asignado. Sin RLS.
 
 ---
 
-### 8.3 Tablas de candidatos y reproducción
+### 9.3 Tablas de candidatos y reproducción
 
 #### `room_track_candidates` — Canciones candidatas para una sala
 
-```sql
-create table if not exists room_track_candidates (
-  id uuid primary key default gen_random_uuid(),
-  room_hash text not null references qr_codes(hash) on delete cascade,
-  track_key text not null,         -- identificador único de la canción
-  artist_key text not null,        -- identificador único del artista
-  track_name text not null,
-  artist_name text not null,
-  mbid text,                       -- MusicBrainz ID
-  lastfm_url text,                 -- URL en Last.fm
-  is_explicit boolean,
-  seed_source text not null default 'related',  -- 'related' o 'search'
-  created_at timestamptz not null default now(),
-  unique(room_hash, track_key)
-);
-```
-
-Canciones sugeridas o descubiertas para una sala, con metadatos de Last.fm. Sin RLS.
+Canciones sugeridas o descubiertas para una sala, con metadatos. Sin RLS.
 
 #### `participant_candidate_scores` — Puntajes de candidatos por participante
-
-```sql
-create table if not exists participant_candidate_scores (
-  id uuid primary key default gen_random_uuid(),
-  room_hash text not null references qr_codes(hash) on delete cascade,
-  participant_id uuid not null references room_participants(id) on delete cascade,
-  candidate_id uuid not null references room_track_candidates(id) on delete cascade,
-  score numeric(7,6) not null,      -- puntaje calculado 0-1
-  strongest_signal text,            -- qué factor pesó más
-  reasons jsonb not null default '[]'::jsonb,  -- array de razones
-  updated_at timestamptz not null default now(),
-  unique(participant_id, candidate_id)
-);
-```
 
 Puntajes calculados para cada par participante-candidato, basados en preferencias, relaciones y exclusiones. Sin RLS.
 
 #### `room_music_exclusions` — Exclusiones musicales por sala/participante
 
-```sql
-create table if not exists room_music_exclusions (
-  id uuid primary key default gen_random_uuid(),
-  room_hash text not null references qr_codes(hash) on delete cascade,
-  participant_id uuid references room_participants(id) on delete cascade,
-  track_key text,                  -- canción excluida (opcional)
-  artist_key text,                 -- artista excluido (opcional)
-  reason text not null,            -- 'dislike', 'rejected', 'duplicate', 'explicit', 'manual'
-  expires_at timestamptz,
-  created_at timestamptz not null default now(),
-  constraint room_music_exclusions_check check (track_key is not null or artist_key is not null)
-);
-```
-
 Canciones o artistas que no deben ser sugeridos. Sin RLS.
 
 #### `room_track_history` — Historial de reproducción
-
-```sql
-create table if not exists room_track_history (
-  id uuid primary key default gen_random_uuid(),
-  room_hash text not null references qr_codes(hash) on delete cascade,
-  candidate_id uuid references room_track_candidates(id) on delete set null,
-  track_key text not null,
-  artist_key text not null,
-  status text not null,            -- 'proposed', 'approved', 'rejected', 'played', 'skipped'
-  created_at timestamptz not null default now()
-);
-```
 
 Registro de lo que se propuso, aprobó, reprodujo o saltó en cada sala. Sin RLS.
 
 ---
 
-### 8.4 Permisos
-
-El esquema público tiene permisos asignados de la siguiente forma:
+### 9.4 Permisos
 
 | Tabla | anon | authenticated | service_role | RLS |
 |---|---|---|---|---|
@@ -508,7 +555,7 @@ El esquema público tiene permisos asignados de la siguiente forma:
 
 ---
 
-### 8.5 Diagrama ER completo
+### 9.5 Diagrama ER completo
 
 ```
 qr_codes (1) ────────── (N) room_participants
@@ -534,7 +581,7 @@ qr_codes (1) ────────── (N) room_participants
     │               └──────────────────────┘
     │
     │ (room_hash)   ┌──────────────────────┐
-    ├──────────────►│  room_track_history   │── status (proposed/approved/rejected/played/skipped)
+    ├──────────────►│  room_track_history   │── status
     │               └──────────────────────┘
     │
     │ (room_hash)   ┌──────────────┐
@@ -548,7 +595,7 @@ qr_codes (1) ────────── (N) room_participants
 
 ---
 
-## 9. Edge Functions
+## 10. Edge Functions
 
 Todas las funciones usan `@supabase/server` con `withSupabase({ auth: ["publishable", "secret"] })` y `verify_jwt = false`. Esto significa que aceptan tanto el anon key como el service role key sin verificar JWT.
 
@@ -560,6 +607,13 @@ Todas las funciones usan `@supabase/server` con `withSupabase({ auth: ["publisha
 | **search-songs** | `/functions/v1/search-songs` | POST | `{ q }` | `{ results: [...] }` |
 | **set-location** | `/functions/v1/set-location` | POST | `{ hash, lat, lng }` | `{ lat, lng }` |
 | **get-location** | `/functions/v1/get-location` | POST | `{ hash }` | `{ lat, lng }` |
+
+### Funciones planeadas (futuro mood quiz)
+
+| Función | Propósito |
+|---|---|
+| **mood-questions** | Toma `{ mood_value }` (0-10), llama a una LLM para generar 3 preguntas de seguimiento personalizadas |
+| **mood-recommend** | Toma `{ mood_value, answers }`, llama a LLM para obtener recomendaciones de canciones, verifica con Last.fm |
 
 Todas tienen import map idéntico:
 
@@ -574,7 +628,7 @@ Todas tienen import map idéntico:
 
 ---
 
-## 10. Frontend: componentes y rutas
+## 11. Frontend: componentes y rutas
 
 ### Rutas definidas en `App.jsx`
 
@@ -597,6 +651,8 @@ Todas tienen import map idéntico:
       │
       ├── "/qr/:hash" → <ScanPage>
       │           ├── <form> (nickname)
+      │           ├── <MoodSlider> (quiz paso 1)
+      │           ├── <QuestionPlaceholder> (quiz paso 2)
       │           ├── <MiniMap> (si el host puso ubicación)
       │           └── <div participantes>
       │
@@ -606,9 +662,22 @@ Todas tienen import map idéntico:
                         └── (usa useSongs + useSongVotes)
 ```
 
+### Flujo de fases en ScanPage
+
+```
+useState('phase')  → 'form' | 'joining' | 'quiz' | 'room'
+useState('quizStep') → 1 | 2
+
+form  →  (submit nickname)  →  joining  →  (1.5s)  →  quiz  →  (completar)  →  room
+                                                                                  │
+                                                                           fetchRoom cada 2s
+                                                                           get-location
+                                                                           useRoomSongs
+```
+
 ---
 
-## 11. Cómo ejecutar el proyecto
+## 12. Cómo ejecutar el proyecto
 
 ### Requisitos
 
@@ -664,11 +733,11 @@ O crear el archivo `supabase/seed.sql` con contenido apropiado (puede estar vac�
 
 ---
 
-## 12. Incidencias conocidas
+## 13. Incidencias conocidas
 
-### 12.1 Tablas faltantes por migraciones incompletas
+### 13.1 Tablas faltantes por migraciones incompletas
 
-Debido a que han trabajado **varios autores** en este proyecto, puede que la base de datos local no tenga todas las tablas necesarias. Las migraciones están en `supabase/migrations/` pero es posible que no se hayan ejecutado todas.
+Debido a que han trabajado **varios autores** en este proyecto, puede que la base de datos local no tenga todas las tablas necesarias.
 
 **Síntomas:**
 - Error al hacer clic en "EMPEZAR": `relation "qr_codes" does not exist`
@@ -676,15 +745,15 @@ Debido a que han trabajado **varios autores** en este proyecto, puede que la bas
 - Error al votar: `relation "room_votes" does not exist`
 - Error en funciones: `relation "xxxx" does not exist`
 
-**Solución:** Ejecutar `supabase db push` para aplicar las migraciones pendientes. Ver [Guía de migraciones](#13-guía-de-migraciones).
+**Solución:** Ejecutar `supabase db push` para aplicar las migraciones pendientes. Ver [Guía de migraciones](#14-guía-de-migraciones).
 
-### 12.2 seed.sql faltante
+### 13.2 seed.sql faltante
 
 `config.toml` referencia `./seed.sql` que no existe. Causa error en `supabase db reset`. Solución: deshabilitarlo o crearlo.
 
-### 12.3 Tablas creadas por otros autores que no existen en migraciones (RESUELTO)
+### 13.3 Tablas creadas por otros autores que no existen en migraciones (RESUELTO)
 
-> **Estado actual:** RESUELTO. Se crearon migraciones para las 6 tablas faltantes (`20260718184000` a `20260718184600`). Ver sección 8 para el detalle completo.
+> **Estado actual:** RESUELTO. Se crearon migraciones para las 6 tablas faltantes (`20260718184000` a `20260718184600`). Ver sección 9 para el detalle completo.
 
 **Problema histórico:**
 
@@ -694,27 +763,33 @@ Si algún autor creó tablas manualmente (via SQL directo en Supabase Studio o c
 supabase db diff --use-migra -f nombre_de_la_migracion
 ```
 
-Esto genera un nuevo archivo de migración con las diferencias entre el schema actual de la BD y el estado de las migraciones aplicadas.
-
-### 12.4 Puerto en uso
+### 13.4 Puerto en uso
 
 Si el puerto 54321 o 54322 están ocupados, cambiar en `config.toml`:
 
 ```toml
 [api]
-port = 54325  # cambiar a puerto libre
+port = 54325
 
 [db]
-port = 54326  # cambiar a puerto libre
+port = 54326
 ```
 
-### 12.5 Página /songs no enlazada
+### 13.5 Página /songs no enlazada
 
 La ruta `/songs` existe pero no tiene ningún enlace en la interfaz de usuario. Solo es accesible escribiendo la URL manualmente.
 
+### 13.6 Mood quiz: preguntas 2-4 pendientes
+
+Actualmente solo existe la pregunta 1 (slider de ánimo). Las preguntas 2, 3 y 4 son placeholders. La implementación completa requiere:
+- Edge Functions `mood-questions` y `mood-recommend` con integración LLM
+- Componente de preguntas de opción múltiple generadas dinámicamente
+- Verificación de canciones via Last.fm
+- Integración con playlist en `room_votes`
+
 ---
 
-## 13. Guía de migraciones
+## 14. Guía de migraciones
 
 ### Aplicar migraciones pendientes
 
@@ -724,16 +799,12 @@ supabase db diff
 
 # Aplicar migraciones no ejecutadas
 supabase db push
-
-# Ver el estado actual
-supabase db remote commit  # si hay remoto configurado
 ```
 
 ### Forzar reset completo de la BD
 
 ```bash
 # ⚠️ Esto BORRA todos los datos
-# Primero, deshabilitar seed si no existe el archivo:
 # Editar supabase/config.toml:
 #   [db.seed]
 #   enabled = false
@@ -742,8 +813,6 @@ supabase db reset
 ```
 
 ### Verificar qué migraciones se han aplicado
-
-Conectarse directamente a PostgreSQL:
 
 ```bash
 supabase db dump --local | grep -A5 supabase_migrations
@@ -761,8 +830,6 @@ psql postgresql://postgres:postgres@localhost:54322/postgres \
 ```bash
 supabase db diff --use-migra -f descripcion_de_la_migracion
 ```
-
-Esto compara el schema actual de la BD local contra las migraciones ya aplicadas y genera un archivo SQL con las diferencias.
 
 ### Orden cronológico de migraciones
 
@@ -783,7 +850,7 @@ Esto compara el schema actual de la BD local contra las migraciones ya aplicadas
 
 ---
 
-## 14. Código muerto / no utilizado
+## 15. Código muerto / no utilizado
 
 Los siguientes archivos existen en el repositorio pero **no se utilizan** en la aplicación en ejecución:
 
@@ -801,4 +868,4 @@ Los siguientes archivos existen en el repositorio pero **no se utilizan** en la 
 | `src/components/SongList.jsx` | Isla huérfana | Solo usado por SongsPage. |
 | `src/components/SongCard.jsx` | Isla huérfana | Solo usado por SongList. |
 
-**Decisión:** Estos archivos se mantienen por ahora. Si se decide eliminar la función de ranking local `/songs`, se pueden borrar los 8 archivos de la isla más la ruta en `App.jsx`.
+**Decisión:** Estos archivos se mantienen por ahora. Si se decide eliminar la función de ranking local `/songs`, se pueden borrar los 8 archivos de la isla más la ruta en `App.jsx`. Los componentes activos del mood quiz (`MoodSlider.jsx`, `QuestionPlaceholder.jsx`) están en pleno uso.
